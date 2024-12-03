@@ -1,12 +1,14 @@
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <vector>
+#include <string>
+#include <cstring>
 #include <pcap.h>
-#include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
+#include <openssl/sha.h>
 
+// Konstanty
 #define EAPOL_TYPE 0x888e
 #define MIC_LENGTH 16
 #define PMK_LENGTH 32
@@ -17,9 +19,10 @@
 // Funkce pro generování PMK pomocí PBKDF2
 std::vector<unsigned char> derive_pmk(const std::string &ssid, const std::string &password) {
     std::vector<unsigned char> pmk(PMK_LENGTH);
-    PKCS5_PBKDF2_HMAC_SHA1(password.c_str(), password.size(),
-                           reinterpret_cast<const unsigned char *>(ssid.c_str()), ssid.size(),
-                           4096, PMK_LENGTH, pmk.data());
+    PKCS5_PBKDF2_HMAC_SHA1(
+        password.c_str(), password.size(),
+        reinterpret_cast<const unsigned char *>(ssid.c_str()), ssid.size(),
+        4096, PMK_LENGTH, pmk.data());
     return pmk;
 }
 
@@ -30,12 +33,23 @@ std::vector<unsigned char> derive_ptk(const std::vector<unsigned char> &pmk,
                                       const std::vector<unsigned char> &ap_mac,
                                       const std::vector<unsigned char> &client_mac) {
     std::vector<unsigned char> data;
-    data.insert(data.end(), ap_mac.begin(), ap_mac.end());
-    data.insert(data.end(), client_mac.begin(), client_mac.end());
-    data.insert(data.end(), anonce.begin(), anonce.end());
-    data.insert(data.end(), snonce.begin(), snonce.end());
+    if (ap_mac < client_mac) {
+        data.insert(data.end(), ap_mac.begin(), ap_mac.end());
+        data.insert(data.end(), client_mac.begin(), client_mac.end());
+    } else {
+        data.insert(data.end(), client_mac.begin(), client_mac.end());
+        data.insert(data.end(), ap_mac.begin(), ap_mac.end());
+    }
 
-    std::vector<unsigned char> ptk(MIC_LENGTH);
+    if (anonce < snonce) {
+        data.insert(data.end(), anonce.begin(), anonce.end());
+        data.insert(data.end(), snonce.begin(), snonce.end());
+    } else {
+        data.insert(data.end(), snonce.begin(), snonce.end());
+        data.insert(data.end(), anonce.begin(), anonce.end());
+    }
+
+    std::vector<unsigned char> ptk(16);
     unsigned int len = 0;
     HMAC(EVP_sha1(), pmk.data(), pmk.size(), data.data(), data.size(), ptk.data(), &len);
     return ptk;
@@ -76,12 +90,29 @@ bool extract_handshake(const std::string &pcap_file,
 
     while ((ret = pcap_next_ex(handle, &header, &packet)) >= 0) {
         if (ret == 0) continue; // Timeout
-        // Zpracování paketů
-        // Implementace závisí na formátu rámců
+        // Kontrola typu rámce
+        if (ntohs(*(uint16_t *)(packet + 12)) == EAPOL_TYPE) {
+            const u_char *src_mac = packet + 6;
+            const u_char *dst_mac = packet;
+
+            // Získání ANonce/SNonce
+            const u_char *payload = packet + 14; // Ethernet header size
+            if (anonce.empty()) {
+                ap_mac.assign(src_mac, src_mac + MAC_ADDR_LENGTH);
+                client_mac.assign(dst_mac, dst_mac + MAC_ADDR_LENGTH);
+                anonce.assign(payload + 13, payload + 45);
+            } else if (snonce.empty()) {
+                snonce.assign(payload + 13, payload + 45);
+                mic.assign(payload + header->len - MIC_LENGTH, payload + header->len);
+                eapol_frame.assign(payload, payload + header->len);
+                break;
+            }
+        }
     }
 
     pcap_close(handle);
-    return true; // Pokud jsou všechny hodnoty vyplněny
+
+    return !(ap_mac.empty() || client_mac.empty() || anonce.empty() || snonce.empty() || mic.empty() || eapol_frame.empty());
 }
 
 // Zkouška hesla
