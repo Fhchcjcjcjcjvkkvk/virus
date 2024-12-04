@@ -1,0 +1,145 @@
+#include <stdio.h>
+#include <pcap.h>
+#include <string.h>
+#include <stdlib.h>
+#include <arpa/inet.h>
+#include <netinet/if_ether.h>
+
+// Structure to store Wi-Fi network information
+typedef struct {
+    char essid[32];
+    unsigned char bssid[6];
+    int channel;
+    char encryption[32];
+    int signal_strength;
+} wifi_network;
+
+// Packet handler callback function
+void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr, const unsigned char *packet) {
+    struct ether_header *eth_header = (struct ether_header *) packet;
+
+    if (ntohs(eth_header->ether_type) == 0x0800) {
+        // Ethernet frame, you can extract the EAPOL packets here
+        printf("Captured an EAPOL packet\n");
+
+        // TODO: Extract EAPOL data here and save to file
+    }
+}
+
+// Function to print available Wi-Fi networks
+void print_networks(pcap_t *handle) {
+    printf("Scanning for networks...\n");
+
+    // This will hold the network data
+    wifi_network networks[50];
+    int network_count = 0;
+
+    struct pcap_pkthdr header;
+    const unsigned char *packet;
+    while (1) {
+        packet = pcap_next(handle, &header);
+        if (packet == NULL) continue;
+
+        // Check if the packet is a Beacon frame (802.11 management frame)
+        if (packet[0] == 0x80) { // Beacon frame identifier
+            // Extract BSSID (MAC address)
+            unsigned char *bssid = (unsigned char *)(packet + 10); // BSSID starts at byte 10 in Beacon frame
+
+            // Extract ESSID (Network Name)
+            unsigned char *essid = (unsigned char *)(packet + 37); // ESSID starts after the tag
+            int essid_len = packet[37 - 1]; // Length of the ESSID
+
+            // Extract channel (from DSSS or OFDM parameter)
+            int channel = packet[47];
+
+            // Extract encryption type (WEP, WPA, WPA2, etc.)
+            char encryption[32] = "Open"; // Default assumption is open network
+            if (packet[37 + essid_len + 1] == 0x30) {
+                strcpy(encryption, "WPA2");
+            } else if (packet[37 + essid_len + 1] == 0x01) {
+                strcpy(encryption, "WEP");
+            }
+
+            // Store network info
+            wifi_network network;
+            memcpy(network.bssid, bssid, 6);
+            memcpy(network.essid, essid, essid_len);
+            network.channel = channel;
+            strcpy(network.encryption, encryption);
+
+            // Print network info
+            printf("Network #%d\n", network_count + 1);
+            printf("  ESSID: %.*s\n", essid_len, essid);
+            printf("  BSSID: %02x:%02x:%02x:%02x:%02x:%02x\n", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+            printf("  Channel: %d\n", channel);
+            printf("  Encryption: %s\n", encryption);
+            printf("\n");
+
+            networks[network_count++] = network;
+            if (network_count >= 50) break;
+        }
+    }
+}
+
+// Function to capture EAPOL packets for a specific BSSID
+void capture_eapol(pcap_t *handle, unsigned char *bssid) {
+    printf("Capturing EAPOL packets for BSSID %02x:%02x:%02x:%02x:%02x:%02x...\n",
+           bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+
+    struct pcap_pkthdr header;
+    const unsigned char *packet;
+    while (1) {
+        packet = pcap_next(handle, &header);
+        if (packet == NULL) continue;
+
+        struct ether_header *eth_header = (struct ether_header *) packet;
+        if (ntohs(eth_header->ether_type) == 0x888e) { // EAPOL packet
+            // Check if the EAPOL packet is from the selected BSSID
+            if (memcmp(bssid, eth_header->ether_shost, 6) == 0) {
+                // Save EAPOL packet to file (PCAP format)
+                printf("EAPOL packet captured!\n");
+                FILE *pcap_file = fopen("eapol_capture.pcap", "ab");
+                if (pcap_file != NULL) {
+                    fwrite(&header, sizeof(header), 1, pcap_file);
+                    fwrite(packet, header.len, 1, pcap_file);
+                    fclose(pcap_file);
+                }
+            }
+        }
+    }
+}
+
+int main() {
+    char errbuf[PCAP_ERRBUF_SIZE];
+    pcap_t *handle;
+    char *dev = pcap_lookupdev(errbuf); // Find the default device
+    if (dev == NULL) {
+        fprintf(stderr, "Error finding device: %s\n", errbuf);
+        return 1;
+    }
+
+    printf("Using device: %s\n", dev);
+
+    // Open the device in monitor mode for packet capture
+    handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+    if (handle == NULL) {
+        fprintf(stderr, "Error opening device: %s\n", errbuf);
+        return 1;
+    }
+
+    // Print available networks
+    print_networks(handle);
+
+    // Get user input for BSSID to capture EAPOL
+    printf("Enter the BSSID of the network to capture EAPOL packets: ");
+    unsigned char bssid[6];
+    for (int i = 0; i < 6; i++) {
+        scanf("%2hhx", &bssid[i]);
+    }
+
+    // Start capturing EAPOL packets
+    capture_eapol(handle, bssid);
+
+    pcap_close(handle);
+    return 0;
+}
