@@ -1,131 +1,83 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
-#include <time.h>
 
-#define CAPTURE_DURATION 60  // Capture duration in seconds
-
-// Function to handle Ctrl+C interrupt to stop capture
-void sigint_handler(int sig) {
-    printf("\nCapture interrupted!\n");
-    exit(0);
+void capture_packets(const char* output_file, const char* bssid) {
+    char command[512];
+    
+    // Capture EAPOL packets and save to the specified .pcap file
+    // This will invoke tshark to capture EAPOL packets from the specified BSSID
+    snprintf(command, sizeof(command), "tshark -i wlan0 -a duration:60 -f \"ether host %s and wlan[0] == 0x08\" -w %s", bssid, output_file);
+    
+    printf("Capturing packets... Please wait.\n");
+    int result = system(command);  // Executes the tshark command
+    
+    if (result == 0) {
+        printf("Capture completed and saved to %s\n", output_file);
+    } else {
+        printf("Error during capture.\n");
+    }
 }
 
-// Function to scan available Wi-Fi networks using PowerShell on Windows
-void scan_networks(char *interface_name) {
+void list_networks() {
+    char command[] = "netsh wlan show networks mode=Bssid";
     FILE *fp;
-    char buffer[1024];
-    int network_count = 0;
+    char path[1035];
 
-    // Command to run PowerShell script to list Wi-Fi networks
-    char command[256];
-    sprintf(command, "powershell -Command \"Get-NetWiFi -InterfaceAlias '%s' | Select-Object SSID, Authentication\"", interface_name);
+    printf("Listing available networks (BSSID, ESSID, Encryption):\n");
 
-    fp = popen(command, "r");
+    // Open the command for reading
+    fp = _popen(command, "r");
     if (fp == NULL) {
-        perror("Error running PowerShell command");
+        printf("Failed to run command.\n");
         return;
     }
 
-    // Parse the output of the command
-    printf("Scanning for Wi-Fi networks on interface %s...\n", interface_name);
-    printf("------------------------------------------------------------\n");
-    printf("Index | ESSID             | Authentication\n");
-    printf("------------------------------------------------------------\n");
-
-    // Iterate through each line in the command output
-    while (fgets(buffer, sizeof(buffer), fp)) {
-        if (strstr(buffer, "SSID") && strstr(buffer, "Authentication")) {
-            char essid[100], encryption[50];
-            int essid_found = 0, encryption_found = 0;
-
-            // Extract ESSID and Authentication (Encryption) info
-            if (strstr(buffer, "SSID")) {
-                sscanf(buffer, "    SSID : %99[^\n]", essid);
-                essid_found = 1;
-            }
-            if (strstr(buffer, "Authentication")) {
-                sscanf(buffer, "    Authentication : %49[^\n]", encryption);
-                encryption_found = 1;
-            }
-
-            // If both ESSID and Encryption are found, print network info
-            if (essid_found && encryption_found) {
-                network_count++;
-                printf("%-6d| %-18s| %-12s\n", network_count, essid, encryption);
-                essid_found = 0;
-                encryption_found = 0;
-            }
+    // Read the output line by line
+    while (fgets(path, sizeof(path), fp) != NULL) {
+        // Print only the lines that contain BSSID, SSID (ESSID), and Encryption information
+        if (strstr(path, "BSSID") != NULL || strstr(path, "SSID") != NULL || strstr(path, "Encryption") != NULL) {
+            printf("%s", path);
         }
     }
 
-    if (network_count == 0) {
-        printf("No networks found.\n");
-    }
-
-    fclose(fp);
+    // Close the file pointer
+    _pclose(fp);
 }
 
-// Function to capture WPA handshake packets (EAPOL frames) using Wireshark/Npcap
-void capture_packets(char *interface_name, char *bssid, char *filename) {
-    // Use Npcap (Wireshark) to capture packets for WPA handshake (EAPOL)
-    char command[256];
-    
-    printf("Capturing EAPOL frames for WPA handshake on BSSID %s...\n", bssid);
-
-    // Run Wireshark/Npcap capture command in the background to capture EAPOL frames
-    // The filter captures EAPOL frames (which are part of WPA handshakes) for the given BSSID
-    sprintf(command, "tshark -i %s -a duration:%d -f \"wlan type data and wlan addr2 %s and eapol\" -w %s", 
-            interface_name, CAPTURE_DURATION, bssid, filename);
-
-    // Execute the capture command
-    int result = system(command);
-    if (result != 0) {
-        printf("Error running the capture command. Make sure Wireshark or Npcap is installed and properly configured.\n");
-        return;
+int main(int argc, char *argv[]) {
+    // If no arguments are passed, list available networks.
+    if (argc == 1) {
+        list_networks();
+        return 0;
     }
 
-    printf("Capture finished. EAPOL handshake (if any) saved to %s\n", filename);
-}
-
-int main() {
-    char interface_name[50];
-    char filename[100];
-    char bssid[20];
-
-    // Display available interfaces using PowerShell command
-    FILE *fp = popen("powershell -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name\"", "r");
-    if (!fp) {
-        printf("Error retrieving interface list.\n");
+    if (argc != 5) {
+        printf("Usage: %s -w <output_file> -b <BSSID>\n", argv[0]);
         return 1;
     }
-
-    printf("Available interfaces:\n");
-    // Read and list interfaces
-    while (fgets(interface_name, sizeof(interface_name), fp)) {
-        printf("- %s", interface_name);
+    
+    // Parse input arguments for output file and BSSID
+    char* output_file = NULL;
+    char* bssid = NULL;
+    
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-w") == 0) {
+            output_file = argv[i+1];
+            i++;
+        } else if (strcmp(argv[i], "-b") == 0) {
+            bssid = argv[i+1];
+            i++;
+        }
     }
-    fclose(fp);
 
-    // Ask user to select an interface
-    printf("\nEnter the name of the interface to scan (e.g., Wi-Fi): ");
-    fgets(interface_name, sizeof(interface_name), stdin);
-    interface_name[strcspn(interface_name, "\n")] = '\0'; // Remove the newline character
-
-    // Scan Wi-Fi networks on the selected interface
-    scan_networks(interface_name);
-
-    // Ask user to select a network (BSSID)
-    printf("Enter the BSSID of the network to capture EAPOL (e.g., 00:14:22:01:23:45): ");
-    scanf("%s", bssid);
-
-    // Ask user for the filename to save the capture
-    printf("Enter the filename to save the capture (e.g., capture.pcap): ");
-    scanf("%s", filename);
-
-    // Start packet capture
-    capture_packets(interface_name, bssid, filename);
+    if (output_file == NULL || bssid == NULL) {
+        printf("Error: Missing required parameters.\n");
+        return 1;
+    }
+    
+    // Capture packets for the specified BSSID and write to the output file
+    capture_packets(output_file, bssid);
 
     return 0;
 }
