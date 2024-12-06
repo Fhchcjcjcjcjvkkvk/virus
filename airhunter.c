@@ -3,57 +3,44 @@
 #include <string.h>
 #include <windows.h>
 
-// Function to run a system command and print output
-void run_command(const char *command) {
-    FILE *fp;
-    char result[1024];
-
-    fp = popen(command, "r");
-    if (fp == NULL) {
-        perror("Error running command");
-        return;
-    }
-
-    while (fgets(result, sizeof(result), fp) != NULL) {
-        printf("%s", result);
-    }
-
-    fclose(fp);
-}
-
-// Function to list available networks
+// Function to list networks with details (BSSID, ESSID, Encryption, RSSI)
 void list_networks() {
-    printf("Listing available networks...\n");
-
-    // Corrected command for tshark to show available Wi-Fi networks on Windows
-    const char *command = "tshark -i Wi-Fi -Y \"wlan.fc.type_subtype == 0x08\" -T fields -e wlan.sa -e wlan.ssid -e wlan_radio.signal_dbm";
-    run_command(command);
+    printf("Listing available networks with RSSI...\n");
+    
+    // Use tshark to scan and display BSSID, ESSID, Encryption, and RSSI
+    system("tshark -i \"Wi-Fi\" -Y \"wlan.fc.type_subtype == 0x08\" -T fields -e wlan.bssid -e wlan.ssid -e wlan_radio.signal_dbm -e wlan.wlan_radio.channel");
 }
 
-// Function to capture EAPOL packets from a specific BSSID and save to a file
-void capture_eapol_packets(const char *bssid, const char *file_name) {
-    printf("Capturing EAPOL packets for BSSID: %s, saving to %s...\n", bssid, file_name);
+// Function to capture packets for a specific BSSID and save to a .pcap file
+void capture_packets(const char *file_name, const char *bssid) {
+    printf("Capturing packets for BSSID: %s and saving to %s...\n", bssid, file_name);
 
-    // Corrected command to capture EAPOL packets from a specific BSSID
-    char command[256];
-    snprintf(command, sizeof(command), "tshark -i Wi-Fi -a duration:60 -w %s -Y eapol -f \"ether host %s\"", file_name, bssid);
-    run_command(command);
+    // Command to start tshark capture for EAPOL handshakes, using interface 'Wi-Fi' on Windows
+    char command[512];
+    snprintf(command, sizeof(command), "tshark -i \"Wi-Fi\" -a duration:60 -w %s -Y \"eapol && wlan.bssid==%s\"", file_name, bssid);
+
+    int result = system(command);
+    if (result != 0) {
+        printf("Error capturing packets\n");
+    }
+}
+
+// Function to parse command line arguments and decide which action to take
+void parse_arguments(int argc, char *argv[]) {
+    if (argc == 1) {
+        // No parameters provided, just list networks
+        list_networks();
+    } else if (argc == 5 && strcmp(argv[1], "-w") == 0 && strcmp(argv[3], "-b") == 0) {
+        // Capture packets if -w and -b are specified
+        const char *file_name = argv[2];
+        const char *bssid = argv[4];
+        capture_packets(file_name, bssid);
+    } else {
+        printf("Usage: airhunter [-w <file_name>] [-b <BSSID>]\n");
+    }
 }
 
 int main(int argc, char *argv[]) {
-    if (argc == 1) {
-        // No arguments passed, just list networks
-        list_networks();
-    } else if (argc == 5 && strcmp(argv[1], "-w") == 0 && strcmp(argv[3], "-b") == 0) {
-        // Arguments for capturing packets (e.g., airhunter -w capture.pcap -b 78:57:57:8:57)
-        const char *file_name = argv[2];
-        const char *bssid = argv[4];
-        capture_eapol_packets(bssid, file_name);
-    } else {
-        printf("Usage:\n");
-        printf("  airhunter -w <file.pcap> -b <BSSID>    Capture EAPOL packets for a BSSID\n");
-        printf("  airhunter                             List available networks\n");
-    }
-
+    parse_arguments(argc, argv);
     return 0;
 }
