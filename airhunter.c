@@ -38,6 +38,7 @@ void capture_eapol(const char *file_name, const char *bssid, const char *interfa
 }
 
 int main(int argc, char *argv[]) {
+    // Check the number of arguments
     if (argc == 1) {
         // No arguments, list available networks
         list_networks("Wi-Fi");  // Replace with the actual interface name or index on your machine
@@ -49,9 +50,16 @@ int main(int argc, char *argv[]) {
         capture_eapol(file_name, bssid, "Wi-Fi");  // Replace with actual interface name or index
     } else {
         // Invalid usage
-        fprintf(stderr, "Usage:\n");
-        fprintf(stderr, "  airhunter           # List available networks\n");
-        fprintf(stderr, "  airhunter -w <file.pcap> -b <BSSID>   # Capture EAPOL frames from BSSID\n");
+        fprintf(stderr, "Invalid arguments. Usage:\n");
+        fprintf(stderr, "  airhunter       : List available networks\n");
+        fprintf(stderr, "  airhunter -w <filename> -b <BSSID>   # Capture EAPOL frames from BSSID\n");
+
+        // Display arguments for debugging
+        printf("Received arguments:\n");
+        for (int i = 0; i < argc; i++) {
+            printf("  Argument %d: %s\n", i, argv[i]);
+        }
+
         return 1;
     }
 
