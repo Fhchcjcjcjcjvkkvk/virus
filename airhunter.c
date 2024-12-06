@@ -7,7 +7,12 @@
 int main() {
     char bssid[32];
     char filename[100];
+    char interface[50];
     char command[COMMAND_SIZE];
+
+    // Prompt the user to enter the Wi-Fi interface name
+    printf("ENTER Wi-Fi INTERFACE (e.g., Wi-Fi or 3): ");
+    scanf("%49s", interface);
 
     // Prompt the user to enter the BSSID
     printf("ENTER BSSID: ");
@@ -18,9 +23,9 @@ int main() {
     scanf("%99s", filename);
 
     // Construct the Tshark command
-    snprintf(command, COMMAND_SIZE, 
-             "tshark -i Wi-Fi -Y \"eapol && wlan.bssid == %s\" -w %s",
-             bssid, filename);
+    snprintf(command, COMMAND_SIZE,
+             "tshark -i %s -Y \"eapol && wlan.bssid == %s\" -w %s",
+             interface, bssid, filename);
 
     // Display the constructed command for verification
     printf("Executing command: %s\n", command);
