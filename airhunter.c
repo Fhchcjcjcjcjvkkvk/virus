@@ -8,23 +8,38 @@
 void capture_packets(const char *interface, const char *bssid, const char *output_file) {
     char cmd[MAX_CMD_LENGTH];
     
-    // Build the tshark command to capture EAPOL packets and filter by BSSID
-    snprintf(cmd, MAX_CMD_LENGTH, "tshark -i \"%s\" -Y \"eapol && wlan.bssid == %s\" -w \"%s\" -a duration:30", 
-            interface, bssid, output_file);
+    // Step 1: Capture all packets (no display filter during capture)
+    snprintf(cmd, MAX_CMD_LENGTH, "tshark -i \"%s\" -w \"%s\" -a duration:30", 
+            interface, output_file);
     
     printf("Running command: %s\n", cmd);
     
-    // Execute the command
+    // Execute the capture command
     FILE *fp = popen(cmd, "r");
     if (fp == NULL) {
         perror("Error running tshark");
+        exit(1);
+    }
+    fclose(fp);
+
+    // Step 2: Filter captured packets for EAPOL and the specified BSSID
+    char filtered_cmd[MAX_CMD_LENGTH];
+    snprintf(filtered_cmd, MAX_CMD_LENGTH, "tshark -r \"%s\" -Y \"eapol && wlan.bssid == %s\" -w \"%s\"", 
+            output_file, bssid, output_file);
+    
+    printf("Running command: %s\n", filtered_cmd);
+    
+    // Execute the filtering command
+    fp = popen(filtered_cmd, "r");
+    if (fp == NULL) {
+        perror("Error running tshark filtering command");
         exit(1);
     }
     
     char buffer[256];
     int eapol_found = 0;
 
-    // Check if EAPOL packets are captured
+    // Check if EAPOL packets are found in the filtered output
     while (fgets(buffer, sizeof(buffer), fp)) {
         if (strstr(buffer, "EAPOL")) {
             eapol_found = 1;
@@ -36,6 +51,7 @@ void capture_packets(const char *interface, const char *bssid, const char *outpu
 
     if (!eapol_found) {
         printf("No EAPOL packets found, stopping capture...\n");
+        remove(output_file); // Remove the capture file if no EAPOL packets are found
         exit(0); // Exit if no EAPOL packets are found
     }
 }
