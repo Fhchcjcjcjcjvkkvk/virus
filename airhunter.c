@@ -8,9 +8,9 @@
 void capture_packets(const char *interface, const char *bssid, const char *output_file) {
     char cmd[MAX_CMD_LENGTH];
     
-    // Build the tshark command to capture EAPOL packets
-    snprintf(cmd, MAX_CMD_LENGTH, "tshark -i \"%s\" -Y eapol -w \"%s\" -a duration:30 -b %s", 
-            interface, output_file, bssid);
+    // Build the tshark command to capture EAPOL packets and filter by BSSID
+    snprintf(cmd, MAX_CMD_LENGTH, "tshark -i \"%s\" -Y \"eapol && wlan.bssid == %s\" -w \"%s\" -a duration:30", 
+            interface, bssid, output_file);
     
     printf("Running command: %s\n", cmd);
     
