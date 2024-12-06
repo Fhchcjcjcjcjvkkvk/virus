@@ -18,7 +18,7 @@ void list_networks(const char *interface) {
 
     // Use tshark to list networks (beacon frames)
     char cmd[256];
-    snprintf(cmd, sizeof(cmd), "tshark -i %s -f \"wlan.fc.type_subtype == 0x08\" -T fields -e wlan.bssid -e wlan.ssid -e wlan.crypto", interface);
+    snprintf(cmd, sizeof(cmd), "tshark -i %s -f \"wlan.fc.type_subtype == 0x08\" -T fields -e wlan.bssid -e wlan.ssid", interface);
     run_command(cmd);
 }
 
