@@ -6,7 +6,6 @@ void capture_packets(const char* output_file, const char* bssid) {
     char command[512];
     
     // Capture EAPOL packets and save to the specified .pcap file
-    // This will invoke tshark to capture EAPOL packets from the specified BSSID
     snprintf(command, sizeof(command), "tshark -i Wi-Fi -a duration:60 -f \"ether host %s and wlan[0] == 0x08\" -w %s", bssid, output_file);
     
     printf("Capturing packets... Please wait.\n");
@@ -33,10 +32,19 @@ void list_networks() {
         return;
     }
 
+    // Print the entire output for debugging
+    printf("Raw output from netsh wlan show networks mode=Bssid:\n");
+
+    while (fgets(path, sizeof(path), fp) != NULL) {
+        printf("%s", path);  // Debugging: print the raw output line by line
+    }
+
+    // Now extract and display specific details
+    rewind(fp); // Rewind the file pointer to start from the beginning again
     char bssid[18], essid[256], encryption[256], rssi[256];
     int line_number = 0;
 
-    // Read the output line by line
+    // Read the output again and extract relevant information
     while (fgets(path, sizeof(path), fp) != NULL) {
         // Clean up any leading/trailing whitespace
         path[strcspn(path, "\r\n")] = 0;
@@ -54,8 +62,8 @@ void list_networks() {
             sscanf(path, "        Encryption   : %[^\n]", encryption);
             line_number = 3; // We found Encryption
         }
-        else if (strstr(path, "Signal") != NULL && line_number == 3) {
-            sscanf(path, "        Signal       : %s", rssi);
+        else if (strstr(path, "PWR") != NULL && line_number == 3) {
+            sscanf(path, "        PWR       : %s", rssi);
             line_number = 0; // Reset after reading a full network info block
 
             // Print the extracted network information
