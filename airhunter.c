@@ -23,7 +23,7 @@ void list_networks() {
     FILE *fp;
     char path[1035];
 
-    printf("Listing available networks (BSSID, ESSID, Encryption, RSSI):\n");
+    printf("Listing available networks (BSSID, ESSID, Encryption, Signal Strength):\n");
 
     // Open the command for reading
     fp = _popen(command, "r");
@@ -55,7 +55,7 @@ void list_networks() {
     // Rewind the file pointer to parse the relevant details
     rewind(fp);
     
-    char bssid[18], essid[256], encryption[256], rssi[256];
+    char bssid[18], essid[256], encryption[256], signal[256];
     int line_number = 0;
 
     // Extract and display network information
@@ -63,7 +63,7 @@ void list_networks() {
         // Clean up any leading/trailing whitespace
         path[strcspn(path, "\r\n")] = 0;
 
-        // Capture BSSID, ESSID, Encryption, and RSSI values
+        // Capture BSSID, ESSID, Encryption, and Signal values
         if (strstr(path, "BSSID") != NULL) {
             sscanf(path, "    BSSID %*d : %s", bssid);
             line_number = 1; // We found BSSID
@@ -77,11 +77,16 @@ void list_networks() {
             line_number = 3; // We found Encryption
         }
         else if (strstr(path, "Signal") != NULL && line_number == 3) {
-            sscanf(path, "        Signal       : %s", rssi);
+            sscanf(path, "        Signal       : %s", signal);
             line_number = 0; // Reset after reading a full network info block
 
-            // Print the extracted network information
-            printf("BSSID: %-18s ESSID: %-30s Encryption: %-20s RSSI: %-5s\n", bssid, essid, encryption, rssi);
+            // Format Signal Strength (RSSI) to display as requested: e.g., "54-"
+            int signal_strength = atoi(signal); // Convert Signal to integer
+            if (signal_strength >= 0) {
+                printf("BSSID: %-18s ESSID: %-30s Encryption: %-20s Signal Strength: %-3d-\n", bssid, essid, encryption, signal_strength);
+            } else {
+                printf("BSSID: %-18s ESSID: %-30s Encryption: %-20s Signal Strength: Unknown\n", bssid, essid, encryption);
+            }
         }
     }
 
