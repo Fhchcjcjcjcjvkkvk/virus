@@ -5,13 +5,14 @@
 void capture_eapol_packets(const char *output_file, const char *bssid) {
     char command[1024];
     
-    // Set the interface name to "Wi-Fi" (or the appropriate interface on your system)
-    snprintf(command, sizeof(command), "tshark -i \"Wi-Fi\" -a duration:30 -w %s -Y \"eapol && wlan.bssid == %s\"", output_file, bssid);
+    // Use a capture filter to capture only management packets (including EAPOL frames)
+    // and then apply a display filter for EAPOL and specific BSSID
+    snprintf(command, sizeof(command), "tshark -i \"Wi-Fi\" -a duration:30 -w %s -f \"wlan type mgt\" -Y \"eapol && wlan.bssid == %s\"", output_file, bssid);
 
-    // Print the command that is being run for debugging purposes
+    // Print the command for debugging purposes
     printf("Running capture with command: %s\n", command);
 
-    // Execute the tshark command using system()
+    // Execute the tshark command
     int result = system(command);
 
     if (result == 0) {
