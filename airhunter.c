@@ -10,7 +10,7 @@ int main() {
     char interface[50];
     char command[COMMAND_SIZE];
 
-    // Prompt the user to enter the Wi-Fi interface name
+    // Prompt the user to enter the Wi-Fi interface
     printf("ENTER Wi-Fi INTERFACE (e.g., Wi-Fi or 3): ");
     scanf("%49s", interface);
 
@@ -18,26 +18,26 @@ int main() {
     printf("ENTER BSSID: ");
     scanf("%31s", bssid);
 
-    // Prompt the user to enter the file name
-    printf("ENTER SAVE FILE (e.g., capture.pcap): ");
+    // Prompt the user to enter the output file name
+    printf("ENTER SAVE FILE (e.g., capture.pcapng): ");
     scanf("%99s", filename);
 
-    // Construct the Tshark command
+    // Construct the dumpcap command
     snprintf(command, COMMAND_SIZE,
-             "tshark -i %s -Y \"eapol && wlan.bssid == %s\" -w %s",
+             "dumpcap -i %s -f \"ether proto 0x888e and wlan bssid %s\" -w %s",
              interface, bssid, filename);
 
-    // Display the constructed command for verification
+    // Display the constructed command
     printf("Executing command: %s\n", command);
 
     // Execute the command
     int result = system(command);
 
-    // Check the result of the system call
+    // Check the result
     if (result == 0) {
         printf("Packet capture completed successfully and saved to %s\n", filename);
     } else {
-        printf("Failed to execute the Tshark command. Please ensure Tshark is installed and accessible.\n");
+        printf("Failed to execute the dumpcap command. Please ensure dumpcap is installed and accessible.\n");
     }
 
     return 0;
