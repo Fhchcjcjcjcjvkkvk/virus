@@ -1,59 +1,74 @@
 #include <stdio.h>
+#include <pcap.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
-void capture_packets(const char *output_file, const char *bssid, int channel) {
-    char command[512];
+#define EAPOL_TYPE 0x88
 
-    // Set the channel for the wireless interface (this command may need admin privileges)
-    char channel_command[128];
-    snprintf(channel_command, sizeof(channel_command), 
-             "netsh wlan set hostednetwork channel=%d", channel);
-    system(channel_command);
-
-    // Construct the tshark command to capture EAPOL packets on the specified BSSID and channel
-    // Make sure the correct interface index (e.g., "Wi-Fi") is used
-    snprintf(command, sizeof(command), 
-             "tshark -i 1 -f \"eapol and ether host %s\" -c 10000 -w %s", 
-             bssid, output_file);
-
-    // Run the tshark command to capture packets
-    int result = system(command);
-    if (result == -1) {
-        perror("Error executing tshark");
+// Callback function to process captured packets
+void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
+    // Check if the packet contains an EAPOL frame (EtherType 0x88)
+    if (packet[12] == 0x88 && packet[13] == 0x8e) {
+        printf("EAPOL Packet Captured! Length: %d\n", pkthdr->len);
     }
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 7) {
-        fprintf(stderr, "Usage: %s --write <output_file> --bssid <bssid> --channel <channel>\n", argv[0]);
-        return 1;
+    if (argc != 5) {
+        printf("Usage: %s -c <channel> -w <filename.pcap> -b <bssid>\n", argv[0]);
+        return -1;
     }
 
-    const char *output_file = NULL;
-    const char *bssid = NULL;
-    int channel = -1;
+    int channel = atoi(argv[2]);
+    const char *filename = argv[4];
+    const char *bssid = argv[6];
 
-    // Parse command-line arguments
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--write") == 0 && i + 1 < argc) {
-            output_file = argv[++i];
-        } else if (strcmp(argv[i], "--bssid") == 0 && i + 1 < argc) {
-            bssid = argv[++i];
-        } else if (strcmp(argv[i], "--channel") == 0 && i + 1 < argc) {
-            channel = atoi(argv[++i]);
+    // Open the pcap file for writing
+    pcap_t *handle;
+    char errbuf[PCAP_ERRBUF_SIZE];
+
+    // Find the network device to capture from
+    pcap_if_t *alldevs;
+    if (pcap_findalldevs(&alldevs, errbuf) == -1) {
+        fprintf(stderr, "Error finding devices: %s\n", errbuf);
+        return -1;
+    }
+
+    pcap_if_t *dev;
+    for (dev = alldevs; dev != NULL; dev = dev->next) {
+        printf("Device: %s\n", dev->name);
+        if (dev->flags & PCAP_IF_LOOPBACK) continue;  // Skip loopback devices
+
+        // Open device in capture mode
+        handle = pcap_open_live(dev->name, BUFSIZ, 1, 1000, errbuf);
+        if (handle == NULL) {
+            fprintf(stderr, "Error opening device %s: %s\n", dev->name, errbuf);
+            return -1;
         }
+
+        // Set the channel (if necessary)
+        // This step is specific to your wireless adapter and its capabilities
+
+        // Set output file for saving captured packets
+        pcap_dumper_t *dumpfile = pcap_dump_open(handle, filename);
+        if (dumpfile == NULL) {
+            fprintf(stderr, "Error opening output file %s\n", filename);
+            return -1;
+        }
+
+        // Start capturing packets
+        printf("Capturing on channel %d, saving to %s...\n", channel, filename);
+        if (pcap_loop(handle, 0, packet_handler, NULL) < 0) {
+            fprintf(stderr, "Error capturing packets: %s\n", pcap_geterr(handle));
+            return -1;
+        }
+
+        pcap_dump_close(dumpfile);
+        pcap_close(handle);
     }
 
-    if (output_file == NULL || bssid == NULL || channel == -1) {
-        fprintf(stderr, "Invalid arguments! Usage: %s --write <output_file> --bssid <bssid> --channel <channel>\n", argv[0]);
-        return 1;
-    }
-
-    // Start packet capture
-    printf("Starting packet capture...\n");
-    capture_packets(output_file, bssid, channel);
-    printf("Capture complete. Packets saved to %s\n", output_file);
-
+    // Free the list of devices
+    pcap_freealldevs(alldevs);
     return 0;
 }
