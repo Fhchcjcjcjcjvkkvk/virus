@@ -1,122 +1,174 @@
 #include <stdio.h>
-#include <pcap.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pcap.h>
+#include <signal.h>
 #include <time.h>
 
-#define EAPOL_TYPE 0x888e
+#define CAPTURE_DURATION 60  // Capture duration in seconds
 
-// Structure for capturing packets
-struct packet_info {
-    struct pcap_pkthdr header;
-    const u_char *packet;
-};
-
-// Callback function to handle captured packets
-void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr, const unsigned char *packet) {
-    struct packet_info *info = (struct packet_info *)user_data;
-    info->header = *pkthdr;
-    info->packet = packet;
-
-    // Check if packet is EAPOL (WPA handshake)
-    if (packet[12] == 0x88 && packet[13] == 0x8e) {
-        printf("WPA Handshake found!\n");
-    }
+// Function to handle Ctrl+C interrupt to stop capture
+void sigint_handler(int sig) {
+    printf("\nCapture interrupted!\n");
+    exit(0);
 }
 
-// Function to find the Wi-Fi interface
-pcap_t *find_wifi_interface(char *errbuf) {
-    pcap_if_t *interfaces, *dev;
-    pcap_t *handle = NULL;
-    int found = 0;
+// Function to scan available Wi-Fi networks and parse their BSSID, ESSID, and Encryption type
+void scan_networks(char *interface_name) {
+    FILE *fp;
+    char buffer[1024];
+    int network_count = 0;
 
-    // Get the list of all available interfaces
-    if (pcap_findalldevs(&interfaces, errbuf) == -1) {
-        printf("Error finding interfaces: %s\n", errbuf);
-        return NULL;
+    // Run the netsh command to list Wi-Fi networks with BSSID and Encryption info
+    char command[256];
+    sprintf(command, "netsh wlan show networks mode=bssid interface=%s", interface_name);
+
+    fp = popen(command, "r");
+    if (fp == NULL) {
+        perror("Error running netsh command");
+        return;
     }
 
-    // Iterate through the interfaces and select a Wi-Fi one (usually has 'wifi' in the name)
-    for (dev = interfaces; dev != NULL; dev = dev->next) {
-        if (strstr(dev->name, "wifi") != NULL) {
-            // Open the selected interface for packet capture
-            handle = pcap_open_live(dev->name, BUFSIZ, 1, 1000, errbuf);
-            if (handle == NULL) {
-                printf("Error opening device %s: %s\n", dev->name, errbuf);
-            } else {
-                printf("Capturing on Wi-Fi interface: %s\n", dev->name);
-                found = 1;
-                break;
+    // Parse the output of the command
+    printf("Scanning for Wi-Fi networks on interface %s...\n", interface_name);
+    printf("------------------------------------------------------------\n");
+    printf("Index | BSSID             | ESSID             | Encryption\n");
+    printf("------------------------------------------------------------\n");
+
+    // Iterate through each line in the command output
+    while (fgets(buffer, sizeof(buffer), fp)) {
+        if (strstr(buffer, "SSID") && strstr(buffer, "BSSID")) {
+            char essid[100], bssid[20], encryption[50];
+            int essid_found = 0, bssid_found = 0, encryption_found = 0;
+
+            // Check for ESSID
+            if (strstr(buffer, "SSID") && !essid_found) {
+                sscanf(buffer, "    SSID %*d  : %99[^\n]", essid);
+                essid_found = 1;
+            }
+
+            // Check for BSSID
+            if (strstr(buffer, "BSSID") && !bssid_found) {
+                sscanf(buffer, "    BSSID %*d  : %19s", bssid);
+                bssid_found = 1;
+            }
+
+            // Check for Encryption
+            if (strstr(buffer, "Encryption") && !encryption_found) {
+                sscanf(buffer, "    Encryption   : %49[^\n]", encryption);
+                encryption_found = 1;
+            }
+
+            // If all fields are found, print the network info
+            if (essid_found && bssid_found && encryption_found) {
+                network_count++;
+                printf("%-6d| %-18s| %-18s| %-12s\n", network_count, bssid, essid, encryption);
+                essid_found = 0;
+                bssid_found = 0;
+                encryption_found = 0;
             }
         }
     }
 
-    // Free the device list
-    pcap_freealldevs(interfaces);
-
-    if (!found) {
-        printf("No Wi-Fi interface found\n");
+    if (network_count == 0) {
+        printf("No networks found.\n");
     }
 
-    return handle;
+    fclose(fp);
 }
 
-// Function to start capturing packets
-void capture_packets(const char *filename, int capture_duration) {
+// Function to capture packets for WPA handshake (EAPOL packets)
+void capture_packets(char *interface_name, char *bssid, char *filename) {
     pcap_t *handle;
-    pcap_dumper_t *pcap_file;
     char errbuf[PCAP_ERRBUF_SIZE];
-
-    // Find and open the Wi-Fi interface
-    handle = find_wifi_interface(errbuf);
-    if (handle == NULL) {
-        return;
-    }
-
-    // Open the pcap file to write the captured packets
-    pcap_file = pcap_dump_open(handle, filename);
-    if (pcap_file == NULL) {
-        printf("Error opening pcap file: %s\n", filename);
-        pcap_close(handle);
-        return;
-    }
-
-    // Create packet info structure
-    struct packet_info info;
-
-    // Capture packets for the specified duration
+    struct pcap_pkthdr header;
+    const u_char *packet;
     time_t start_time = time(NULL);
-    while (difftime(time(NULL), start_time) < capture_duration) {
-        if (pcap_loop(handle, 1, packet_handler, (unsigned char *)&info) < 0) {
-            printf("Error capturing packet: %s\n", pcap_geterr(handle));
-            break;
+
+    // Open the capture interface
+    handle = pcap_open_live(interface_name, 65536, 1, 1000, errbuf);
+    if (handle == NULL) {
+        fprintf(stderr, "Error opening capture interface: %s\n", errbuf);
+        return;
+    }
+
+    // Open the output pcap file
+    pcap_dumper_t *dumper = pcap_dump_open(handle, filename);
+    if (dumper == NULL) {
+        fprintf(stderr, "Error opening output file: %s\n", filename);
+        return;
+    }
+
+    // Capture for the specified duration or until Ctrl+C is pressed
+    signal(SIGINT, sigint_handler);
+
+    printf("Capturing packets for WPA handshake on BSSID %s...\n", bssid);
+    int handshake_found = 0;
+    while (time(NULL) - start_time < CAPTURE_DURATION) {
+        packet = pcap_next(handle, &header);
+        if (packet == NULL) {
+            continue; // Skip empty packets
         }
 
-        // Write the packet to the pcap file
-        pcap_dump((unsigned char *)pcap_file, &info.header, info.packet);
+        // If we have a packet, save it to the pcap file
+        pcap_dump((u_char *)dumper, &header, packet);
+
+        // Check for WPA handshake (EAPOL packets)
+        if (header.len > 0 && packet[0] == 0x88 && packet[1] == 0x8e) {
+            printf("WPA Handshake packet captured.\n");
+            handshake_found = 1;
+        }
     }
 
-    // Close pcap handle and file
-    pcap_dump_close(pcap_file);
+    // Close the capture
+    pcap_dump_flush(dumper);
+    pcap_dump_close(dumper);
     pcap_close(handle);
 
-    printf("Capture complete. Data saved to %s\n", filename);
+    if (handshake_found) {
+        printf("WPA Handshake found and saved to %s\n", filename);
+    } else {
+        printf("No WPA Handshake found during capture.\n");
+    }
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 4) {
-        printf("Usage: airhunter.exe -w <output_file>\n");
-        return 1;
+int main() {
+    char interface_name[50];
+    char filename[100];
+    char bssid[20];
+
+    // Display available interfaces
+    pcap_if_t *alldevs, *dev;
+    pcap_findalldevs(&alldevs, NULL);
+    printf("Available interfaces:\n");
+    int idx = 1;
+    for (dev = alldevs; dev != NULL; dev = dev->next) {
+        printf("%d. %s\n", idx++, dev->name);
     }
 
-    // Parse command-line arguments
-    const char *filename = argv[2];
-    const int capture_duration = 60;  // Capture for 60 seconds
+    // Ask user to select an interface
+    printf("Enter the interface number to capture on: ");
+    int interface_index;
+    scanf("%d", &interface_index);
+    dev = alldevs;
+    for (int i = 1; i < interface_index; i++) {
+        dev = dev->next;
+    }
+    strcpy(interface_name, dev->name);
 
-    printf("Starting packet capture for 60 seconds...\n");
+    // Scan Wi-Fi networks on the selected interface
+    scan_networks(interface_name);
 
-    // Capture packets and save to the specified file
-    capture_packets(filename, capture_duration);
+    // Ask user to select a network (BSSID)
+    printf("Enter the BSSID of the network to capture EAPOL (e.g., 00:14:22:01:23:45): ");
+    scanf("%s", bssid);
+
+    // Ask user for the filename to save the capture
+    printf("Enter the filename to save the capture (e.g., capture.pcap): ");
+    scanf("%s", filename);
+
+    // Start packet capture
+    capture_packets(interface_name, bssid, filename);
 
     return 0;
 }
