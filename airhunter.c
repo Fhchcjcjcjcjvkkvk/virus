@@ -3,9 +3,15 @@
 #include <string.h>
 #include <windows.h>
 
-void display_networks() {
-    // Run a command to display available networks with BSSID, ESSID, and encryption
+void display_networks_with_stations() {
+    // Run a command to display available networks with BSSID, ESSID, encryption, and stations
+    printf("Showing available networks with stations...\n");
     system("netsh wlan show networks mode=bssid");
+
+    // Use tshark to list connected clients (stations)
+    // Here we assume the Wi-Fi interface name is 'Wi-Fi', you can change if necessary
+    printf("\nStations connected to your Wi-Fi interface:\n");
+    system("tshark -i Wi-Fi -Y 'wlan.fc.type_subtype == 0x08' -T fields -e wlan.addr");
 }
 
 void capture_packets(const char* bssid, const char* output_file) {
@@ -26,10 +32,9 @@ void capture_packets(const char* bssid, const char* output_file) {
 }
 
 int main(int argc, char* argv[]) {
-    // If no arguments are provided, show available networks
+    // If no arguments are provided, show available networks with stations
     if (argc == 1) {
-        printf("Showing available networks...\n");
-        display_networks();
+        display_networks_with_stations();
     } 
     // If -w and -b arguments are provided, capture packets
     else if (argc == 5 && strcmp(argv[1], "-w") == 0 && strcmp(argv[3], "-b") == 0) {
@@ -40,7 +45,7 @@ int main(int argc, char* argv[]) {
         capture_packets(bssid, output_file);
     } else {
         printf("Usage: \n");
-        printf("airhunter          - Show available networks\n");
+        printf("airhunter          - Show available networks with stations\n");
         printf("airhunter -w <file> -b <bssid> - Capture packets for a specific BSSID\n");
     }
 
