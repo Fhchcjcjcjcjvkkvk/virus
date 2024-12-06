@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pcap.h>
-#include <getopt.h>
+#include <unistd.h>
 
 void show_usage() {
     printf("Usage: airhunter [-w <file.pcap>] [-b <BSSID>] [-i <interface>]\n");
@@ -12,39 +11,37 @@ void show_usage() {
 }
 
 void list_networks() {
-    // This function can use system commands like `netsh wlan show networks`
-    // or invoke external tools like `tshark` to list available networks.
-    printf("Listing available networks...\n");
-    
-    // Example to call tshark for network scanning
+    // Use tshark to list available interfaces
+    printf("Listing available interfaces...\n");
     system("tshark -D");
-    printf("Use the correct interface from the above list and run capture again.\n");
+
+    // You can also list networks with netsh on Windows
+    printf("Listing available Wi-Fi networks...\n");
+    system("netsh wlan show networks mode=Bssid");
 }
 
 void capture_packets(const char *interface, const char *bssid, const char *file) {
-    // You can use `tshark` to capture EAPOL packets
-    char cmd[256];
-    
+    // Create the command to capture EAPOL packets with tshark
+    char cmd[512];
+
     if (bssid != NULL) {
         // Capture packets from the specific BSSID
-        sprintf(cmd, "tshark -i \"%s\" -Y 'eapol' -w %s -b 78:%s", interface, file, bssid);
+        snprintf(cmd, sizeof(cmd), "tshark -i \"%s\" -Y \"eapol\" -w %s -b 78:%s", interface, file, bssid);
     } else {
-        // Capture all packets (optionally filter later)
-        sprintf(cmd, "tshark -i \"%s\" -Y 'eapol' -w %s", interface, file);
+        // Capture all EAPOL packets (no BSSID filter)
+        snprintf(cmd, sizeof(cmd), "tshark -i \"%s\" -Y \"eapol\" -w %s", interface, file);
     }
 
     printf("Capturing packets with command: %s\n", cmd);
     system(cmd);
 
-    // Check for EAPOL packets
-    printf("Capture complete. Checking for EAPOL packets...\n");
-    // You could parse the capture file or check output for packets.
-    printf("Capture finished, and packets saved to %s.\n", file);
+    // Notify the user the capture is finished
+    printf("Capture complete. Packets saved to %s\n", file);
 }
 
 int main(int argc, char **argv) {
     int opt;
-    const char *interface = "Wi-Fi"; // Default Wi-Fi interface name (change if necessary)
+    const char *interface = "Wi-Fi"; // Default Wi-Fi interface name
     const char *file = NULL;
     const char *bssid = NULL;
 
