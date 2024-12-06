@@ -1,44 +1,41 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-
-#define COMMAND_SIZE 512
 
 int main() {
-    char bssid[32];
-    char filename[100];
-    char interface[50];
-    char command[COMMAND_SIZE];
+    char command[512];
 
-    // Prompt the user to enter the Wi-Fi interface
-    printf("ENTER Wi-Fi INTERFACE (e.g., Wi-Fi or 3): ");
-    scanf("%49s", interface);
+    // Construct the command to execute tshark
+    // -i <interface>: Specify the interface (e.g., wlan0, Wi-Fi)
+    // -I: Enable monitor mode
+    // -Y: Filter to show Wi-Fi beacons and probe requests
+    // -T fields: Output specific fields
+    // -e: Specify the fields (SSID, BSSID, Signal strength)
+    snprintf(command, sizeof(command),
+             "tshark -i Wi-Fi -I -Y \"wlan.fc.type_subtype == 0x08 || wlan.fc.type_subtype == 0x04\" "
+             "-T fields -e wlan.sa -e wlan.ssid -e radiotap.dbm_antsignal");
 
-    // Prompt the user to enter the BSSID
-    printf("ENTER BSSID: ");
-    scanf("%31s", bssid);
+    printf("Running command:\n%s\n\n", command);
 
-    // Prompt the user to enter the output file name
-    printf("ENTER SAVE FILE (e.g., capture.pcap): ");
-    scanf("%99s", filename);
-
-    // Construct the dumpcap command with PCAP output format
-    snprintf(command, COMMAND_SIZE,
-             "dumpcap -i %s -f \"ether proto 0x888e and wlan bssid %s\" -w %s -P",
-             interface, bssid, filename);
-
-    // Display the constructed command
-    printf("Executing command: %s\n", command);
-
-    // Execute the command
-    int result = system(command);
-
-    // Check the result
-    if (result == 0) {
-        printf("Packet capture completed successfully and saved to %s\n", filename);
-    } else {
-        printf("Failed to execute the dumpcap command. Please ensure dumpcap is installed and accessible.\n");
+    // Execute the tshark command
+    FILE *fp = popen(command, "r");
+    if (fp == NULL) {
+        perror("Failed to run tshark");
+        return 1;
     }
+
+    // Read and display the output from tshark
+    char buffer[1024];
+    printf("Detected Wi-Fi Networks and Stations:\n");
+    printf("BSSID                | SSID                    | Signal Strength (dBm)\n");
+    printf("------------------------------------------------------------------------\n");
+
+    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        // Parse and display the output
+        printf("%s", buffer);
+    }
+
+    // Close the pipe
+    pclose(fp);
 
     return 0;
 }
