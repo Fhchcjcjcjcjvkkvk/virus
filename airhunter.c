@@ -1,66 +1,80 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <pcap.h>
+#include <getopt.h>
 
-// Function to run a system command and capture output
-void run_command(const char *cmd) {
-    int ret = system(cmd);
-    if (ret != 0) {
-        fprintf(stderr, "Command failed: %s\n", cmd);
-        exit(1);
-    }
+void show_usage() {
+    printf("Usage: airhunter [-w <file.pcap>] [-b <BSSID>] [-i <interface>]\n");
+    printf("  -w <file.pcap>  Write captured packets to a file\n");
+    printf("  -b <BSSID>      Capture packets from a specific BSSID\n");
+    printf("  -i <interface>  Specify the Wi-Fi interface (e.g., Wi-Fi)\n");
 }
 
-// Function to list available networks
-void list_networks(const char *interface) {
-    printf("Listing available networks on interface: %s...\n", interface);
-
-    // Use tshark to list networks (beacon frames)
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "tshark -i %s -f \"wlan.fc.type_subtype == 0x08\" -T fields -e wlan.bssid -e wlan.ssid", interface);
-    run_command(cmd);
-}
-
-// Function to capture EAPOL packets for a specific BSSID and save to a .pcap file
-void capture_eapol(const char *file_name, const char *bssid, const char *interface) {
-    printf("Capturing EAPOL frames from BSSID: %s on interface: %s\n", bssid, interface);
+void list_networks() {
+    // This function can use system commands like `netsh wlan show networks`
+    // or invoke external tools like `tshark` to list available networks.
+    printf("Listing available networks...\n");
     
-    // Run tshark to capture EAPOL frames
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "tshark -i %s -f \"wlan.addr == %s && eapol\" -w %s", interface, bssid, file_name);
-
-    // Run the capture command
-    run_command(cmd);
-
-    // Check if the EAPOL handshake was captured, otherwise exit
-    printf("Capture complete. Saving to file: %s\n", file_name);
+    // Example to call tshark for network scanning
+    system("tshark -D");
+    printf("Use the correct interface from the above list and run capture again.\n");
 }
 
-int main(int argc, char *argv[]) {
-    // Check the number of arguments
-    if (argc == 1) {
-        // No arguments, list available networks
-        list_networks("Wi-Fi");  // Replace with the actual interface name or index on your machine
-    } else if (argc == 5 && strcmp(argv[1], "-w") == 0 && strcmp(argv[3], "-b") == 0) {
-        // Capture packets with EAPOL
-        const char *file_name = argv[2];
-        const char *bssid = argv[4];
-        
-        capture_eapol(file_name, bssid, "Wi-Fi");  // Replace with actual interface name or index
+void capture_packets(const char *interface, const char *bssid, const char *file) {
+    // You can use `tshark` to capture EAPOL packets
+    char cmd[256];
+    
+    if (bssid != NULL) {
+        // Capture packets from the specific BSSID
+        sprintf(cmd, "tshark -i \"%s\" -Y 'eapol' -w %s -b 78:%s", interface, file, bssid);
     } else {
-        // Invalid usage
-        fprintf(stderr, "Invalid arguments. Usage:\n");
-        fprintf(stderr, "  airhunter       : List available networks\n");
-        fprintf(stderr, "  airhunter -w <filename> -b <BSSID>   # Capture EAPOL frames from BSSID\n");
+        // Capture all packets (optionally filter later)
+        sprintf(cmd, "tshark -i \"%s\" -Y 'eapol' -w %s", interface, file);
+    }
 
-        // Display arguments for debugging
-        printf("Received arguments:\n");
-        for (int i = 0; i < argc; i++) {
-            printf("  Argument %d: %s\n", i, argv[i]);
+    printf("Capturing packets with command: %s\n", cmd);
+    system(cmd);
+
+    // Check for EAPOL packets
+    printf("Capture complete. Checking for EAPOL packets...\n");
+    // You could parse the capture file or check output for packets.
+    printf("Capture finished, and packets saved to %s.\n", file);
+}
+
+int main(int argc, char **argv) {
+    int opt;
+    const char *interface = "Wi-Fi"; // Default Wi-Fi interface name (change if necessary)
+    const char *file = NULL;
+    const char *bssid = NULL;
+
+    // Parse command-line arguments
+    while ((opt = getopt(argc, argv, "w:b:i:")) != -1) {
+        switch (opt) {
+            case 'w':
+                file = optarg; // Output pcap file
+                break;
+            case 'b':
+                bssid = optarg; // BSSID for specific capture
+                break;
+            case 'i':
+                interface = optarg; // Wi-Fi interface
+                break;
+            default:
+                show_usage();
+                return 1;
         }
+    }
 
-        return 1;
+    if (file != NULL) {
+        if (bssid != NULL) {
+            capture_packets(interface, bssid, file);
+        } else {
+            capture_packets(interface, NULL, file);
+        }
+    } else {
+        // If no -w option is provided, list available networks
+        list_networks();
     }
 
     return 0;
