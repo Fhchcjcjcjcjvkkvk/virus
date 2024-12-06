@@ -12,8 +12,9 @@ void capture_packets(const char *output_file, const char *bssid, int channel) {
     system(channel_command);
 
     // Construct the tshark command to capture EAPOL packets on the specified BSSID and channel
+    // Make sure the correct interface index (e.g., "Wi-Fi") is used
     snprintf(command, sizeof(command), 
-             "tshark -i \"Wi-Fi\" -f \"eapol and ether host %s\" -c 10000 -w %s", 
+             "tshark -i 1 -f \"eapol and ether host %s\" -c 10000 -w %s", 
              bssid, output_file);
 
     // Run the tshark command to capture packets
