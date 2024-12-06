@@ -1,34 +1,52 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+void capture_eapol_packets(const char *output_file, const char *bssid) {
+    char command[1024];
+    
+    // Set the interface name to "Wi-Fi" (or the appropriate interface on your system)
+    snprintf(command, sizeof(command), "tshark -i \"Wi-Fi\" -a duration:30 -w %s -Y \"eapol && wlan.bssid == %s\"", output_file, bssid);
+
+    // Print the command that is being run for debugging purposes
+    printf("Running capture with command: %s\n", command);
+
+    // Execute the tshark command using system()
+    int result = system(command);
+
+    if (result == 0) {
+        printf("Capture finished successfully. The packets have been saved to %s\n", output_file);
+    } else {
+        printf("An error occurred while running tshark.\n");
+    }
+}
 
 int main(int argc, char *argv[]) {
-    // Check if the correct number of arguments is provided
-    if (argc != 6) {
-        printf("Usage: %s <interface> <channel> <bssid> <output_file> <duration>\n", argv[0]);
+    if (argc != 5) {
+        printf("Usage: %s -w <output.pcap> -b <BSSID>\n", argv[0]);
         return 1;
     }
 
-    // Parse the command-line arguments
-    const char *interface = argv[1];  // WiFi interface (e.g., wlan0)
-    int channel = atoi(argv[2]);  // Channel to capture on
-    const char *bssid = argv[3];  // BSSID of the target network
-    const char *output_file = argv[4];  // Output pcap file name
-    int duration = atoi(argv[5]);  // Duration to capture in seconds
+    const char *output_file = NULL;
+    const char *bssid = NULL;
 
-    // Create the tshark command string
-    char command[512];
-    snprintf(command, sizeof(command),
-             "tshark -i %s -c 1000 -w %s -b duration:%d -f \"ether host %s and type 0x888e\"",
-             interface, output_file, duration, bssid);
-
-    // Execute the command
-    int result = system(command);
-    
-    if (result == 0) {
-        printf("Packet capture complete. File saved to %s\n", output_file);
-    } else {
-        printf("Error occurred while capturing packets.\n");
+    // Parse command-line arguments
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-w") == 0) {
+            output_file = argv[i + 1];
+        } else if (strcmp(argv[i], "-b") == 0) {
+            bssid = argv[i + 1];
+        }
     }
+
+    // Validate input arguments
+    if (output_file == NULL || bssid == NULL) {
+        printf("Invalid arguments! Ensure you provide -w for output and -b for BSSID.\n");
+        return 1;
+    }
+
+    // Call the function to capture EAPOL packets
+    capture_eapol_packets(output_file, bssid);
 
     return 0;
 }
