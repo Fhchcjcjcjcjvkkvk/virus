@@ -24,7 +24,7 @@ void list_networks() {
     FILE *fp;
     char path[1035];
 
-    printf("Listing available networks (BSSID, ESSID, Encryption):\n");
+    printf("Listing available networks (BSSID, ESSID, Encryption, RSSI):\n");
 
     // Open the command for reading
     fp = _popen(command, "r");
@@ -33,11 +33,33 @@ void list_networks() {
         return;
     }
 
+    char bssid[18], essid[256], encryption[256], rssi[256];
+    int line_number = 0;
+
     // Read the output line by line
     while (fgets(path, sizeof(path), fp) != NULL) {
-        // Print only the lines that contain BSSID, SSID (ESSID), and Encryption information
-        if (strstr(path, "BSSID") != NULL || strstr(path, "SSID") != NULL || strstr(path, "Encryption") != NULL) {
-            printf("%s", path);
+        // Clean up any leading/trailing whitespace
+        path[strcspn(path, "\r\n")] = 0;
+
+        // Capture BSSID, ESSID, Encryption, and RSSI values
+        if (strstr(path, "BSSID") != NULL) {
+            sscanf(path, "    BSSID %*d : %s", bssid);
+            line_number = 1; // We found BSSID
+        } 
+        else if (strstr(path, "SSID") != NULL && line_number == 1) {
+            sscanf(path, "        SSID %*d  : %[^\n]", essid);
+            line_number = 2; // We found ESSID
+        }
+        else if (strstr(path, "Encryption") != NULL && line_number == 2) {
+            sscanf(path, "        Encryption   : %[^\n]", encryption);
+            line_number = 3; // We found Encryption
+        }
+        else if (strstr(path, "Signal") != NULL && line_number == 3) {
+            sscanf(path, "        Signal       : %s", rssi);
+            line_number = 0; // Reset after reading a full network info block
+
+            // Print the extracted network information
+            printf("BSSID: %-18s ESSID: %-30s Encryption: %-20s RSSI: %-5s\n", bssid, essid, encryption, rssi);
         }
     }
 
