@@ -7,7 +7,7 @@ void capture_packets(const char* output_file, const char* bssid) {
     
     // Capture EAPOL packets and save to the specified .pcap file
     // This will invoke tshark to capture EAPOL packets from the specified BSSID
-    snprintf(command, sizeof(command), "tshark -i wlan0 -a duration:60 -f \"ether host %s and wlan[0] == 0x08\" -w %s", bssid, output_file);
+    snprintf(command, sizeof(command), "tshark -i Wi-Fi -a duration:60 -f \"ether host %s and wlan[0] == 0x08\" -w %s", bssid, output_file);
     
     printf("Capturing packets... Please wait.\n");
     int result = system(command);  // Executes the tshark command
