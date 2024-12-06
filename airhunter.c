@@ -2,59 +2,49 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define COMMAND_MAX 512
+// Function to display available networks
+void showNetworks() {
+    printf("Listing available networks...\n");
+    // You might need to change the interface name to your actual Wi-Fi interface (e.g., Wi-Fi, Ethernet)
+    system("tshark -i Wi-Fi -Y 'wlan.fc.type_subtype == 0x08' -T fields -e wlan.bssid -e wlan.ssid -e wlan.radio.encryption -e wlan.beacon");
+}
 
-// Function prototypes
-void show_networks();
-void capture_eapol(const char *filename, const char *bssid);
+// Function to capture packets and save to a .pcap file
+void capturePackets(const char* bssid, const char* filename) {
+    printf("Capturing packets for BSSID %s, saving to %s...\n", bssid, filename);
+    // Constructing the tshark command for capturing EAPOL frames
+    char command[256];
+    snprintf(command, sizeof(command), "tshark -i Wi-Fi -f \"ether host %s\" -Y eapol -w %s", bssid, filename);
+    
+    // Running the tshark command to capture packets
+    int result = system(command);
+    
+    // Check for errors during capture
+    if (result == 0) {
+        printf("Capture complete.\n");
+    } else {
+        printf("Error during capture.\n");
+    }
+}
 
+// Main function to parse arguments and perform actions
 int main(int argc, char *argv[]) {
     if (argc == 1) {
-        // Show networks if no arguments are provided
-        show_networks();
+        // If no arguments, show available networks
+        showNetworks();
     } else if (argc == 5 && strcmp(argv[1], "-w") == 0 && strcmp(argv[3], "-b") == 0) {
-        // Capture EAPOL packets if the correct arguments are provided
-        const char *filename = argv[2];
-        const char *bssid = argv[4];
-        capture_eapol(filename, bssid);
+        // If arguments include -w for file output and -b for BSSID
+        const char* filename = argv[2];
+        const char* bssid = argv[4];
+        
+        // Capture packets for the specified BSSID and write to file
+        capturePackets(bssid, filename);
     } else {
-        fprintf(stderr, "Usage:\n");
-        fprintf(stderr, "  airhunter              - Show available networks\n");
-        fprintf(stderr, "  airhunter -w <file> -b <BSSID> - Capture EAPOL packets\n");
-        return 1;
+        // Print usage instructions
+        printf("Usage:\n");
+        printf("  airhunter            # Show available networks\n");
+        printf("  airhunter -w <file> -b <BSSID>  # Capture packets from BSSID and save to file\n");
     }
-
+    
     return 0;
-}
-
-// Function to display available networks
-void show_networks() {
-    char command[COMMAND_MAX];
-
-    // Use tshark to capture beacon frames and display network information
-    snprintf(command, sizeof(command), 
-             "tshark -i Wi-Fi -Y \"wlan.fc.type_subtype == 8\" -T fields -e wlan.sa -e wlan.ssid -e wlan_rsna_eapol.keydes.keymic -e wlan_mgt.fixed.beacon\" 2>nul");
-
-    printf("Scanning for networks...\n\n");
-    system(command);
-}
-
-// Function to capture EAPOL packets for a specific BSSID
-void capture_eapol(const char *filename, const char *bssid) {
-    char command[COMMAND_MAX];
-
-    printf("Capturing EAPOL packets for BSSID %s and saving to %s...\n", bssid, filename);
-
-    // Use tshark to filter EAPOL packets for the specified BSSID and save to a file
-    snprintf(command, sizeof(command), 
-             "tshark -i Wi-Fi -Y \"eapol && wlan.sa == %s\" -w %s 2>nul", 
-             bssid, filename);
-
-    int result = system(command);
-
-    if (result == 0) {
-        printf("Capture complete. Check the file %s.\n", filename);
-    } else {
-        fprintf(stderr, "Error: Failed to capture EAPOL packets. Ensure tshark is installed and the Wi-Fi interface is available.\n");
-    }
 }
