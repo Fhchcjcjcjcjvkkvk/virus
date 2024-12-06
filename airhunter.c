@@ -21,9 +21,9 @@ void showNetworks() {
 void capturePackets(const char *fileName, const char *bssid) {
     char command[MAX_BUFFER_SIZE];
     // Assuming the interface is named "Wi-Fi" for most systems, but you can change this if needed.
-    const char *interface = "Wi-Fi";  // Change this to your actual Wi-Fi interface name if needed.
+    const char *wifi_interface = "Wi-Fi";  // Changed variable name from 'interface' to 'wifi_interface'
     
-    snprintf(command, sizeof(command), "tshark -i \"%s\" -f \"ether proto 0x888e and wlan addr1 %s\" -w %s", interface, bssid, fileName);
+    snprintf(command, sizeof(command), "tshark -i \"%s\" -f \"ether proto 0x888e and wlan addr1 %s\" -w %s", wifi_interface, bssid, fileName);
     
     printf("Capturing EAPOL packets from BSSID: %s\n", bssid);
     executeCommand(command);
