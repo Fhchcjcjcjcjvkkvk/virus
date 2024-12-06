@@ -1,74 +1,34 @@
 #include <stdio.h>
-#include <pcap.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-
-#define EAPOL_TYPE 0x88
-
-// Callback function to process captured packets
-void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
-    // Check if the packet contains an EAPOL frame (EtherType 0x88)
-    if (packet[12] == 0x88 && packet[13] == 0x8e) {
-        printf("EAPOL Packet Captured! Length: %d\n", pkthdr->len);
-    }
-}
 
 int main(int argc, char *argv[]) {
-    if (argc != 5) {
-        printf("Usage: %s -c <channel> -w <filename.pcap> -b <bssid>\n", argv[0]);
-        return -1;
+    // Check if the correct number of arguments is provided
+    if (argc != 6) {
+        printf("Usage: %s <interface> <channel> <bssid> <output_file> <duration>\n", argv[0]);
+        return 1;
     }
 
-    int channel = atoi(argv[2]);
-    const char *filename = argv[4];
-    const char *bssid = argv[6];
+    // Parse the command-line arguments
+    const char *interface = argv[1];  // WiFi interface (e.g., wlan0)
+    int channel = atoi(argv[2]);  // Channel to capture on
+    const char *bssid = argv[3];  // BSSID of the target network
+    const char *output_file = argv[4];  // Output pcap file name
+    int duration = atoi(argv[5]);  // Duration to capture in seconds
 
-    // Open the pcap file for writing
-    pcap_t *handle;
-    char errbuf[PCAP_ERRBUF_SIZE];
+    // Create the tshark command string
+    char command[512];
+    snprintf(command, sizeof(command),
+             "tshark -i %s -c 1000 -w %s -b duration:%d -f \"ether host %s and type 0x888e\"",
+             interface, output_file, duration, bssid);
 
-    // Find the network device to capture from
-    pcap_if_t *alldevs;
-    if (pcap_findalldevs(&alldevs, errbuf) == -1) {
-        fprintf(stderr, "Error finding devices: %s\n", errbuf);
-        return -1;
+    // Execute the command
+    int result = system(command);
+    
+    if (result == 0) {
+        printf("Packet capture complete. File saved to %s\n", output_file);
+    } else {
+        printf("Error occurred while capturing packets.\n");
     }
 
-    pcap_if_t *dev;
-    for (dev = alldevs; dev != NULL; dev = dev->next) {
-        printf("Device: %s\n", dev->name);
-        if (dev->flags & PCAP_IF_LOOPBACK) continue;  // Skip loopback devices
-
-        // Open device in capture mode
-        handle = pcap_open_live(dev->name, BUFSIZ, 1, 1000, errbuf);
-        if (handle == NULL) {
-            fprintf(stderr, "Error opening device %s: %s\n", dev->name, errbuf);
-            return -1;
-        }
-
-        // Set the channel (if necessary)
-        // This step is specific to your wireless adapter and its capabilities
-
-        // Set output file for saving captured packets
-        pcap_dumper_t *dumpfile = pcap_dump_open(handle, filename);
-        if (dumpfile == NULL) {
-            fprintf(stderr, "Error opening output file %s\n", filename);
-            return -1;
-        }
-
-        // Start capturing packets
-        printf("Capturing on channel %d, saving to %s...\n", channel, filename);
-        if (pcap_loop(handle, 0, packet_handler, NULL) < 0) {
-            fprintf(stderr, "Error capturing packets: %s\n", pcap_geterr(handle));
-            return -1;
-        }
-
-        pcap_dump_close(dumpfile);
-        pcap_close(handle);
-    }
-
-    // Free the list of devices
-    pcap_freealldevs(alldevs);
     return 0;
 }
