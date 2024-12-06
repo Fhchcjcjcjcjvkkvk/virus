@@ -12,15 +12,15 @@ void sigint_handler(int sig) {
     exit(0);
 }
 
-// Function to scan available Wi-Fi networks and parse their BSSID, ESSID, and Encryption type
+// Function to scan available Wi-Fi networks and parse their ESSID and Encryption type
 void scan_networks(char *interface_name) {
     FILE *fp;
     char buffer[1024];
     int network_count = 0;
 
-    // Run the netsh command to list Wi-Fi networks with BSSID and Encryption info
+    // Run the netsh command to list Wi-Fi networks without BSSID
     char command[256];
-    sprintf(command, "netsh wlan show networks mode=bssid interface=%s", interface_name);
+    sprintf(command, "netsh wlan show networks interface=%s", interface_name);
 
     fp = popen(command, "r");
     if (fp == NULL) {
@@ -31,25 +31,19 @@ void scan_networks(char *interface_name) {
     // Parse the output of the command
     printf("Scanning for Wi-Fi networks on interface %s...\n", interface_name);
     printf("------------------------------------------------------------\n");
-    printf("Index | BSSID             | ESSID             | Encryption\n");
+    printf("Index | ESSID             | Encryption\n");
     printf("------------------------------------------------------------\n");
 
     // Iterate through each line in the command output
     while (fgets(buffer, sizeof(buffer), fp)) {
-        if (strstr(buffer, "SSID") && strstr(buffer, "BSSID")) {
-            char essid[100], bssid[20], encryption[50];
-            int essid_found = 0, bssid_found = 0, encryption_found = 0;
+        if (strstr(buffer, "SSID") && strstr(buffer, "Encryption")) {
+            char essid[100], encryption[50];
+            int essid_found = 0, encryption_found = 0;
 
             // Check for ESSID
             if (strstr(buffer, "SSID") && !essid_found) {
                 sscanf(buffer, "    SSID %*d  : %99[^\n]", essid);
                 essid_found = 1;
-            }
-
-            // Check for BSSID
-            if (strstr(buffer, "BSSID") && !bssid_found) {
-                sscanf(buffer, "    BSSID %*d  : %19s", bssid);
-                bssid_found = 1;
             }
 
             // Check for Encryption
@@ -58,12 +52,11 @@ void scan_networks(char *interface_name) {
                 encryption_found = 1;
             }
 
-            // If all fields are found, print the network info
-            if (essid_found && bssid_found && encryption_found) {
+            // If both ESSID and Encryption are found, print the network info
+            if (essid_found && encryption_found) {
                 network_count++;
-                printf("%-6d| %-18s| %-18s| %-12s\n", network_count, bssid, essid, encryption);
+                printf("%-6d| %-18s| %-12s\n", network_count, essid, encryption);
                 essid_found = 0;
-                bssid_found = 0;
                 encryption_found = 0;
             }
         }
