@@ -28,17 +28,37 @@ void capture_eapol(const char *output_file, const char *bssid) {
 }
 
 int main(int argc, char *argv[]) {
+    const char *output_file = NULL;
+    const char *bssid = NULL;
+    
     if (argc == 1) {
         // No arguments: just show available networks
         list_networks();
-    } else if (argc == 4 && strcmp(argv[1], "-w") == 0 && strcmp(argv[3], "-b") == 0) {
-        // Arguments are in the form: airhunter -w capture.pcap -b 78:57:57:8:57
-        const char *output_file = argv[2];
-        const char *bssid = argv[4];
-        
-        // Capture packets with EAPOL
+        return 0;
+    }
+    
+    // Parse arguments
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-w") == 0 && i + 1 < argc) {
+            output_file = argv[i + 1];  // Get the file name for the output
+            i++;  // Skip the next argument because it's the file name
+        } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
+            bssid = argv[i + 1];  // Get the BSSID
+            i++;  // Skip the next argument because it's the BSSID
+        } else {
+            // Handle invalid argument usage
+            printf("Invalid arguments. Usage:\n");
+            printf("  airhunter       : List available networks\n");
+            printf("  airhunter -w <filename> -b <BSSID> : Capture EAPOL packets for a specific BSSID\n");
+            return 1;
+        }
+    }
+    
+    if (output_file && bssid) {
+        // Both -w and -b were provided, capture packets
         capture_eapol(output_file, bssid);
     } else {
+        // If -w or -b is missing
         printf("Invalid arguments. Usage:\n");
         printf("  airhunter       : List available networks\n");
         printf("  airhunter -w <filename> -b <BSSID> : Capture EAPOL packets for a specific BSSID\n");
