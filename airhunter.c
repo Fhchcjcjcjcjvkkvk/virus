@@ -3,86 +3,52 @@
 #include <string.h>
 #include <unistd.h>
 
-#define MAX_CMD_LENGTH 256
-
-void capture_packets(const char *interface, const char *bssid, const char *output_file) {
-    char cmd[MAX_CMD_LENGTH];
+void capture_packets(const char *interface, const char *file_name, const char *bssid) {
+    // Build the command to start tshark capture
+    char command[512];
+    snprintf(command, sizeof(command), "tshark -i %s -a duration:60 -w %s -f \"ether dst %s and eapol\"", interface, file_name, bssid);
     
-    // Step 1: Capture all packets (no display filter during capture)
-    snprintf(cmd, MAX_CMD_LENGTH, "tshark -i \"%s\" -w \"%s\" -a duration:30", 
-            interface, output_file);
+    printf("Starting capture on interface %s, BSSID: %s\n", interface, bssid);
     
-    printf("Running command: %s\n", cmd);
+    // Run the capture command
+    int result = system(command);
     
-    // Execute the capture command
-    FILE *fp = popen(cmd, "r");
-    if (fp == NULL) {
-        perror("Error running tshark");
-        exit(1);
-    }
-    fclose(fp);
-
-    // Step 2: Filter captured packets for EAPOL and the specified BSSID
-    char filtered_cmd[MAX_CMD_LENGTH];
-    snprintf(filtered_cmd, MAX_CMD_LENGTH, "tshark -r \"%s\" -Y \"eapol && wlan.bssid == %s\" -w \"%s\"", 
-            output_file, bssid, output_file);
-    
-    printf("Running command: %s\n", filtered_cmd);
-    
-    // Execute the filtering command
-    fp = popen(filtered_cmd, "r");
-    if (fp == NULL) {
-        perror("Error running tshark filtering command");
-        exit(1);
-    }
-    
-    char buffer[256];
-    int eapol_found = 0;
-
-    // Check if EAPOL packets are found in the filtered output
-    while (fgets(buffer, sizeof(buffer), fp)) {
-        if (strstr(buffer, "EAPOL")) {
-            eapol_found = 1;
-            break;
-        }
+    if (result != 0) {
+        fprintf(stderr, "Error running tshark capture.\n");
+        return;
     }
 
-    fclose(fp);
-
-    if (!eapol_found) {
-        printf("No EAPOL packets found, stopping capture...\n");
-        remove(output_file); // Remove the capture file if no EAPOL packets are found
-        exit(0); // Exit if no EAPOL packets are found
-    }
+    printf("Capture complete. EAPOL packets saved in %s.\n", file_name);
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 5) {
-        printf("Usage: %s -w <output_file> -b <bssid>\n", argv[0]);
+    if (argc != 7) {
+        fprintf(stderr, "Usage: %s -w <output_file> -b <bssid> -i <interface>\n", argv[0]);
         return 1;
     }
 
     const char *output_file = NULL;
     const char *bssid = NULL;
-    
-    // Parse command-line arguments
+    const char *interface = NULL;
+
+    // Parse command line arguments
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-w") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "-w") == 0) {
             output_file = argv[++i];
-        } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
+        } else if (strcmp(argv[i], "-b") == 0) {
             bssid = argv[++i];
+        } else if (strcmp(argv[i], "-i") == 0) {
+            interface = argv[++i];
         }
     }
 
-    if (output_file == NULL || bssid == NULL) {
-        printf("Missing required arguments: -w (output file) and -b (BSSID)\n");
+    if (output_file == NULL || bssid == NULL || interface == NULL) {
+        fprintf(stderr, "Error: -w (output file), -b (bssid), and -i (interface) are required.\n");
         return 1;
     }
 
-    // Interface name for Windows (change this to the correct interface name)
-    const char *interface = "Wi-Fi"; // change to your actual interface name on Windows
+    // Start capturing packets
+    capture_packets(interface, output_file, bssid);
 
-    capture_packets(interface, bssid, output_file);
-    
     return 0;
 }
