@@ -35,16 +35,30 @@ void list_networks() {
     // Print the entire output for debugging
     printf("Raw output from netsh wlan show networks mode=Bssid:\n");
 
+    int output_found = 0;
+
     while (fgets(path, sizeof(path), fp) != NULL) {
         printf("%s", path);  // Debugging: print the raw output line by line
+        
+        // Check if there is any network output by searching for a specific field
+        if (strstr(path, "BSSID") != NULL) {
+            output_found = 1;
+        }
     }
 
-    // Now extract and display specific details
-    rewind(fp); // Rewind the file pointer to start from the beginning again
+    if (!output_found) {
+        printf("No networks found or the command output is empty.\n");
+        _pclose(fp);
+        return;
+    }
+
+    // Rewind the file pointer to parse the relevant details
+    rewind(fp);
+    
     char bssid[18], essid[256], encryption[256], rssi[256];
     int line_number = 0;
 
-    // Read the output again and extract relevant information
+    // Extract and display network information
     while (fgets(path, sizeof(path), fp) != NULL) {
         // Clean up any leading/trailing whitespace
         path[strcspn(path, "\r\n")] = 0;
@@ -62,8 +76,8 @@ void list_networks() {
             sscanf(path, "        Encryption   : %[^\n]", encryption);
             line_number = 3; // We found Encryption
         }
-        else if (strstr(path, "PWR") != NULL && line_number == 3) {
-            sscanf(path, "        PWR       : %s", rssi);
+        else if (strstr(path, "Signal") != NULL && line_number == 3) {
+            sscanf(path, "        Signal       : %s", rssi);
             line_number = 0; // Reset after reading a full network info block
 
             // Print the extracted network information
