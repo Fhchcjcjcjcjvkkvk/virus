@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pcap.h>
 #include <signal.h>
 #include <time.h>
 
@@ -77,59 +76,25 @@ void scan_networks(char *interface_name) {
     fclose(fp);
 }
 
-// Function to capture packets for WPA handshake (EAPOL packets)
+// Function to capture WPA handshake packets using Wireshark/Npcap via command line
 void capture_packets(char *interface_name, char *bssid, char *filename) {
-    pcap_t *handle;
-    char errbuf[PCAP_ERRBUF_SIZE];
-    struct pcap_pkthdr header;
-    const u_char *packet;
-    time_t start_time = time(NULL);
-
-    // Open the capture interface
-    handle = pcap_open_live(interface_name, 65536, 1, 1000, errbuf);
-    if (handle == NULL) {
-        fprintf(stderr, "Error opening capture interface: %s\n", errbuf);
-        return;
-    }
-
-    // Open the output pcap file
-    pcap_dumper_t *dumper = pcap_dump_open(handle, filename);
-    if (dumper == NULL) {
-        fprintf(stderr, "Error opening output file: %s\n", filename);
-        return;
-    }
-
-    // Capture for the specified duration or until Ctrl+C is pressed
-    signal(SIGINT, sigint_handler);
-
+    // Use Npcap (Wireshark) to capture packets for WPA handshake (EAPOL)
+    char command[256];
+    
     printf("Capturing packets for WPA handshake on BSSID %s...\n", bssid);
-    int handshake_found = 0;
-    while (time(NULL) - start_time < CAPTURE_DURATION) {
-        packet = pcap_next(handle, &header);
-        if (packet == NULL) {
-            continue; // Skip empty packets
-        }
 
-        // If we have a packet, save it to the pcap file
-        pcap_dump((u_char *)dumper, &header, packet);
+    // Run Wireshark/Npcap capture command in the background
+    sprintf(command, "tshark -i %s -a duration:%d -f \"wlan type mgt subtype beacon or wlan type data and wlan addr2 %s\" -w %s", 
+            interface_name, CAPTURE_DURATION, bssid, filename);
 
-        // Check for WPA handshake (EAPOL packets)
-        if (header.len > 0 && packet[0] == 0x88 && packet[1] == 0x8e) {
-            printf("WPA Handshake packet captured.\n");
-            handshake_found = 1;
-        }
+    // Execute the capture command
+    int result = system(command);
+    if (result != 0) {
+        printf("Error running the capture command. Make sure Wireshark or Npcap is installed and properly configured.\n");
+        return;
     }
 
-    // Close the capture
-    pcap_dump_flush(dumper);
-    pcap_dump_close(dumper);
-    pcap_close(handle);
-
-    if (handshake_found) {
-        printf("WPA Handshake found and saved to %s\n", filename);
-    } else {
-        printf("No WPA Handshake found during capture.\n");
-    }
+    printf("Capture finished. WPA Handshake (if any) saved to %s\n", filename);
 }
 
 int main() {
@@ -138,23 +103,17 @@ int main() {
     char bssid[20];
 
     // Display available interfaces
-    pcap_if_t *alldevs, *dev;
-    pcap_findalldevs(&alldevs, NULL);
-    printf("Available interfaces:\n");
-    int idx = 1;
-    for (dev = alldevs; dev != NULL; dev = dev->next) {
-        printf("%d. %s\n", idx++, dev->name);
+    FILE *fp = popen("netsh wlan show interfaces", "r");
+    if (!fp) {
+        printf("Error retrieving interface list.\n");
+        return 1;
     }
 
-    // Ask user to select an interface
-    printf("Enter the interface number to capture on: ");
-    int interface_index;
-    scanf("%d", &interface_index);
-    dev = alldevs;
-    for (int i = 1; i < interface_index; i++) {
-        dev = dev->next;
-    }
-    strcpy(interface_name, dev->name);
+    printf("Available interfaces:\n");
+    // List interfaces from netsh or from any other method
+    // Use Wireshark's or Npcap's interface names (e.g., wlan0, eth0)
+    // or assume a default Wi-Fi interface name
+    strcpy(interface_name, "Wi-Fi");
 
     // Scan Wi-Fi networks on the selected interface
     scan_networks(interface_name);
