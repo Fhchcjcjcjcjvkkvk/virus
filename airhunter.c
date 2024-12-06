@@ -1,41 +1,72 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#define BUFFER_SIZE 1024
+
+void executeTsharkCommand(const char *command, const char *outputFile) {
+    char cmd[BUFFER_SIZE];
+    snprintf(cmd, BUFFER_SIZE, "%s > %s", command, outputFile);
+    system(cmd);
+}
+
+void parseNetworks(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("\nNearby Networks:\n");
+    printf("BSSID\t\t\tSSID\t\tSignal Strength\n");
+    printf("-------------------------------------------------------\n");
+
+    char line[BUFFER_SIZE];
+    while (fgets(line, sizeof(line), file)) {
+        if (strstr(line, "BSSID") || strstr(line, "SSID")) continue; // Skip header
+        // Parsing example: Adjust to match tshark output format
+        char bssid[32], ssid[128], signal[16];
+        if (sscanf(line, "%31s %127s %15s", bssid, ssid, signal) == 3) {
+            printf("%-20s %-20s %-10s\n", bssid, ssid, signal);
+        }
+    }
+    fclose(file);
+}
+
+void parseStations(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("\nAssociated Stations:\n");
+    printf("MAC Address\t\tAP MAC Address\t\tSignal Strength\n");
+    printf("-----------------------------------------------------------\n");
+
+    char line[BUFFER_SIZE];
+    while (fgets(line, sizeof(line), file)) {
+        if (strstr(line, "Station") || strstr(line, "MAC")) continue; // Skip header
+        // Parsing example: Adjust to match tshark output format
+        char stationMac[32], apMac[32], signal[16];
+        if (sscanf(line, "%31s %31s %15s", stationMac, apMac, signal) == 3) {
+            printf("%-20s %-20s %-10s\n", stationMac, apMac, signal);
+        }
+    }
+    fclose(file);
+}
 
 int main() {
-    char command[512];
+    const char *networksFile = "networks.txt";
+    const char *stationsFile = "stations.txt";
 
-    // Construct the command to execute tshark
-    // -i <interface>: Specify the interface (e.g., wlan0, Wi-Fi)
-    // -I: Enable monitor mode
-    // -Y: Filter to show Wi-Fi beacons and probe requests
-    // -T fields: Output specific fields
-    // -e: Specify the fields (SSID, BSSID, Signal strength)
-    snprintf(command, sizeof(command),
-             "tshark -i Wi-Fi -I -Y \"wlan.fc.type_subtype == 0x08 || wlan.fc.type_subtype == 0x04\" "
-             "-T fields -e wlan.sa -e wlan.ssid -e radiotap.dbm_antsignal");
+    // Execute tshark commands to capture network and station data
+    executeTsharkCommand("tshark -i Wi-Fi -Y \"wlan.fc.type_subtype == 0x08\" -T fields -e wlan.bssid -e wlan.ssid -e radiotap.dbm_antsignal", networksFile);
+    executeTsharkCommand("tshark -i Wi-Fi -Y \"wlan.fc.type_subtype == 0x0A\" -T fields -e wlan.ta -e wlan.ra -e radiotap.dbm_antsignal", stationsFile);
 
-    printf("Running command:\n%s\n\n", command);
-
-    // Execute the tshark command
-    FILE *fp = popen(command, "r");
-    if (fp == NULL) {
-        perror("Failed to run tshark");
-        return 1;
-    }
-
-    // Read and display the output from tshark
-    char buffer[1024];
-    printf("Detected Wi-Fi Networks and Stations:\n");
-    printf("BSSID                | SSID                    | Signal Strength (dBm)\n");
-    printf("------------------------------------------------------------------------\n");
-
-    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        // Parse and display the output
-        printf("%s", buffer);
-    }
-
-    // Close the pipe
-    pclose(fp);
+    // Parse and display the output
+    parseNetworks(networksFile);
+    parseStations(stationsFile);
 
     return 0;
 }
