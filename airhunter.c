@@ -1,80 +1,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <windows.h>
 
-void print_usage() {
-    printf("Usage: airhunter [-w <filename>] [-b <BSSID>]\n");
-    printf("  -w <filename> : Write captured packets to <filename> (in .pcap format)\n");
-    printf("  -b <BSSID>    : Specify the BSSID of the network to capture packets from\n");
+void display_networks() {
+    // Run a command to display available networks with BSSID, ESSID, and encryption
+    system("netsh wlan show networks mode=bssid");
 }
 
-void show_networks() {
-    // Use `tshark` or similar command to list available networks with BSSID, ESSID, and Encryption
-    printf("Scanning available networks...\n");
-
-    // List networks with BSSID, ESSID, and Encryption using tshark
-    system("tshark -i wlan0 --bpf 'type mgt' -Y 'wlan.fc.type_subtype == 0x08' -T fields -e wlan.bssid -e wlan.ssid -e wlan.wep -e wlan.capabilities");
-}
-
-void capture_eapol(const char *filename, const char *bssid) {
+void capture_packets(const char* bssid, const char* output_file) {
+    // Command to capture EAPOL packets using tshark
     char command[256];
-    printf("Capturing EAPOL packets from BSSID: %s\n", bssid);
-
-    // Construct the tshark command to capture EAPOL packets
-    snprintf(command, sizeof(command), "tshark -i wlan0 -Y 'eapol' -w %s -f 'ether host %s'", filename, bssid);
+    snprintf(command, sizeof(command), "tshark -i Wi-Fi -w %s -b %s", output_file, bssid);
     
-    // Run the tshark command and capture EAPOL packets
-    int status = system(command);
-    if (status != 0) {
-        printf("Error capturing packets. Please check if the Wi-Fi interface is in monitor mode.\n");
+    printf("Capturing packets for BSSID %s. Press Ctrl+C to stop.\n", bssid);
+    
+    // Run the tshark command to capture packets
+    int result = system(command);
+    
+    if (result != 0) {
+        printf("Error: Failed to capture packets.\n");
     } else {
-        printf("Capture completed. The packets are saved to %s\n", filename);
+        printf("Capture completed. Output saved to %s.\n", output_file);
     }
 }
 
-int main(int argc, char *argv[]) {
-    char *filename = NULL;
-    char *bssid = NULL;
-
+int main(int argc, char* argv[]) {
+    // If no arguments are provided, show available networks
     if (argc == 1) {
-        // No arguments, just show networks
-        show_networks();
-        return 0;
-    }
+        printf("Showing available networks...\n");
+        display_networks();
+    } 
+    // If -w and -b arguments are provided, capture packets
+    else if (argc == 5 && strcmp(argv[1], "-w") == 0 && strcmp(argv[3], "-b") == 0) {
+        const char* output_file = argv[2];
+        const char* bssid = argv[4];
 
-    // Parse arguments
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-w") == 0) {
-            if (i + 1 < argc) {
-                filename = argv[++i];
-            } else {
-                printf("Error: Missing filename after -w\n");
-                return 1;
-            }
-        } else if (strcmp(argv[i], "-b") == 0) {
-            if (i + 1 < argc) {
-                bssid = argv[++i];
-            } else {
-                printf("Error: Missing BSSID after -b\n");
-                return 1;
-            }
-        }
-    }
-
-    if (filename && bssid) {
-        // Both -w and -b are provided, capture EAPOL packets
-        capture_eapol(filename, bssid);
+        printf("Starting packet capture...\n");
+        capture_packets(bssid, output_file);
     } else {
-        // If only -w is provided, show networks
-        if (!filename) {
-            printf("Error: -w (output filename) is required for capturing packets.\n");
-            return 1;
-        }
-        if (!bssid) {
-            printf("Error: -b (BSSID) is required for capturing packets.\n");
-            return 1;
-        }
+        printf("Usage: \n");
+        printf("airhunter          - Show available networks\n");
+        printf("airhunter -w <file> -b <bssid> - Capture packets for a specific BSSID\n");
     }
 
     return 0;
