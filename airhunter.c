@@ -19,12 +19,12 @@ int main() {
     scanf("%31s", bssid);
 
     // Prompt the user to enter the output file name
-    printf("ENTER SAVE FILE (e.g., capture.pcapng): ");
+    printf("ENTER SAVE FILE (e.g., capture.pcap): ");
     scanf("%99s", filename);
 
-    // Construct the dumpcap command
+    // Construct the dumpcap command with PCAP output format
     snprintf(command, COMMAND_SIZE,
-             "dumpcap -i %s -f \"ether proto 0x888e and wlan bssid %s\" -w %s",
+             "dumpcap -i %s -f \"ether proto 0x888e and wlan bssid %s\" -w %s -P",
              interface, bssid, filename);
 
     // Display the constructed command
