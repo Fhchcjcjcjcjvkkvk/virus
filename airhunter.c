@@ -26,7 +26,7 @@ void list_networks() {
     printf("Listing available networks...\n");
 
     // Run tshark to show available Wi-Fi networks on Windows
-    const char *command = "tshark -i Wi-Fi -Y 'wlan.fc.type_subtype == 0x08' -T fields -e wlan.sa -e wlan.ssid -e wlan_radio.signal_dbm";
+    const char *command = "tshark -i Wi-Fi -Y \"wlan.fc.type_subtype == 0x08\" -T fields -e wlan.sa -e wlan.ssid -e wlan_radio.signal_dbm";
     run_command(command);
 }
 
@@ -36,7 +36,7 @@ void capture_eapol_packets(const char *bssid, const char *file_name) {
 
     // Command to capture EAPOL packets for a given BSSID and write to a pcap file
     char command[256];
-    snprintf(command, sizeof(command), "tshark -i Wi-Fi -a duration:60 -w %s -Y eapol -f 'ether host %s'", file_name, bssid);
+    snprintf(command, sizeof(command), "tshark -i Wi-Fi -a duration:60 -w %s -Y eapol -f \"ether host %s\"", file_name, bssid);
     run_command(command);
 }
 
