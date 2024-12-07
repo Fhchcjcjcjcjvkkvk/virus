@@ -17,13 +17,15 @@ struct network_info {
 struct network_info networks[MAX_NETWORKS];
 int network_count = 0;
 
-// Function to parse the output of the netsh command
+// Function to parse the output of the netsh command for available networks
 void parse_netsh_output(FILE *fp) {
     char line[256];
     struct network_info current_network;
     int in_network = 0;
 
     while (fgets(line, sizeof(line), fp)) {
+        printf("Line read: %s", line);  // Debugging output to see what is being read
+        
         // Look for the start of a network block
         if (strstr(line, "SSID") != NULL && strstr(line, "BSSID") != NULL) {
             // Reset current network info for a new network
@@ -56,7 +58,7 @@ void parse_netsh_output(FILE *fp) {
     }
 }
 
-// Function to run the netsh command and parse the output
+// Function to run the netsh command and parse the output for Wi-Fi networks
 void scan_wifi() {
     FILE *fp;
     const char *command = "netsh wlan show networks mode=bssid";
@@ -77,6 +79,11 @@ void scan_wifi() {
 
 // Function to display the networks found
 void display_networks() {
+    if (network_count == 0) {
+        printf("No networks found.\n");
+        return;
+    }
+
     printf("\nFound Wi-Fi Networks:\n");
     printf("%-20s %-30s %-10s\n", "BSSID", "SSID", "Signal Strength (dBm)");
     for (int i = 0; i < network_count; i++) {
