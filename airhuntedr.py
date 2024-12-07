@@ -1,28 +1,25 @@
 import time
 from pywifi import PyWiFi, const, Profile
 
-# Function to scan networks and display their details
-def scan_wifi_networks():
-    wifi = PyWiFi()  # Initialize the Wi-Fi interface
-    iface = wifi.interfaces()[0]  # Use the first interface (e.g., your wireless card)
-    
-    iface.scan()  # Start scanning
-    time.sleep(2)  # Wait a few seconds for the scan to complete
-    
-    scan_results = iface.scan_results()  # Get the scan results
-    
-    if scan_results:
-        print("Available Networks:")
-        print(f"{'SSID':<30} {'BSSID':<20} {'Signal Strength (dBm)'}")
-        print("-" * 60)
-        
-        for network in scan_results:
-            ssid = network.ssid
-            bssid = network.bssid
-            signal_strength = network.signal
-            print(f"{ssid:<30} {bssid:<20} {signal_strength} dBm")
-    else:
-        print("No networks found.")
+# Function to scan available Wi-Fi networks
+def scan_wifi():
+    wifi = PyWiFi()  # Create an instance of PyWiFi
+    iface = wifi.interfaces()[0]  # Get the first Wi-Fi interface (if you have more, adjust the index)
 
-# Run the Wi-Fi scanning function
-scan_wifi_networks()
+    # Start scanning for Wi-Fi networks
+    iface.scan()
+    time.sleep(2)  # Give some time for the scan to complete
+    
+    # Get the list of available networks
+    networks = iface.scan_results()
+
+    # Display available networks with ESSID and BSSID
+    print(f"{'ESSID':<30} {'BSSID'}")
+    print("="*50)
+    for network in networks:
+        essid = network.ssid
+        bssid = network.bssid
+        print(f"{essid:<30} {bssid}")
+        
+# Call the scan_wifi function
+scan_wifi()
