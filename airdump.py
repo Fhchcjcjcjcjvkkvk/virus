@@ -3,17 +3,19 @@ from scapy.all import *
 import pyshark
 import time
 
-# Funkce pro sniffování WPA handshakes na specifikovaném kanálu a BSSID pomocí Scapy
+# Funkce pro sniffování WPA handshakes a celého provozu na specifikovaném kanálu a BSSID pomocí Scapy
 def sniff_eapol_packets(ap_mac, channel, output_file):
-    print(f"Sniffing for WPA handshakes on AP {ap_mac} (Channel {channel})...")
+    print(f"Sniffing for WPA handshakes and all traffic on AP {ap_mac} (Channel {channel})...")
 
-    # Používáme externí nástroj pro přepnutí kanálu, např. Acrylic Wi-Fi nebo Wireshark
-    # Zajistěte, že váš Wi-Fi adaptér je v monitorovacím režimu a nastavte kanál v externím nástroji
+    # Zajistěte, že váš Wi-Fi adaptér je v monitorovacím režimu a nastavte kanál v externím nástroji (např. Wireshark, Acrylic Wi-Fi)
+    
+    # Nastavení rozhraní na správné Wi-Fi rozhraní, například "Wi-Fi" nebo "WiFi 2"
+    conf.iface = "WiFi"  # Nahraďte názvem vašeho Wi-Fi rozhraní na Windows
 
-    # Filtr pro EAPOL pakety (EtherType 0x888e)
-    bpf_filter = f"ether proto 0x888e and ether host {ap_mac}"
+    # Filtr pro všechny pakety a EAPOL pakety (EtherType 0x888e)
+    bpf_filter = f"ether proto 0x888e or ip or udp or tcp or icmp"  # Filtr pro EAPOL a všechny IP pakety
 
-    print("Listening for EAPOL packets...")
+    print("Listening for all traffic and EAPOL packets...")
 
     # Zachytávání paketů
     packets = sniff(count=100, filter=bpf_filter, timeout=60)  # Počet paketů a časový limit na 60 sekund
@@ -53,7 +55,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Zavolání funkce pro sniffování WPA handshakes
+    # Zavolání funkce pro sniffování WPA handshakes a celého provozu
     sniff_eapol_packets(args.ap, args.channel, args.write)
 
     # Pokud byl zadán soubor, provedeme analýzu zachycených paketů
