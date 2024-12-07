@@ -1,66 +1,95 @@
+#include <windows.h>
+#include <wlanapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
-#define MAX_CMD_LEN 256
-#define MAX_OUTPUT_LEN 1024
+#pragma comment(lib, "wlanapi.lib")
+#pragma comment(lib, "ole32.lib")
 
-// Function to run the tshark command and capture the output
-void run_tshark(char *cmd, char *output) {
-    FILE *fp;
-    char buffer[MAX_OUTPUT_LEN];
-
-    fp = _popen(cmd, "r");
-    if (fp == NULL) {
-        perror("Error running tshark");
-        exit(1);
-    }
-
-    // Capture output from tshark
-    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        strcat(output, buffer);
-    }
-
-    fclose(fp);
+void PrintErrorMessage(DWORD dwError) {
+    LPVOID lpMsgBuf;
+    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+                  NULL, dwError, 0, (LPTSTR)&lpMsgBuf, 0, NULL);
+    printf("Error: %s\n", (char*)lpMsgBuf);
+    LocalFree(lpMsgBuf);
 }
 
-// Function to parse the tshark output and display network information
-void parse_tshark_output(char *output) {
-    char *line = strtok(output, "\n");
-    int beacon_count = 0;
-
-    while (line != NULL) {
-        char bssid[18], essid[33];
-        
-        // Search for a line containing the BSSID and ESSID
-        if (sscanf(line, "BSSID: %17s ESSID: \"%32[^\"]\"", bssid, essid) == 2) {
-            beacon_count++;  // Increment the beacon count for each packet
-            printf("BSSID: %s\n", bssid);
-            printf("ESSID: %s\n", essid);
-            printf("Beacon Count: %d\n", beacon_count);
-            printf("-------------------------\n");
-        }
-
-        line = strtok(NULL, "\n");
+void PrintBssid(BYTE *bssid) {
+    for (int i = 0; i < 6; i++) {
+        printf("%02X", bssid[i]);
+        if (i < 5) printf(":");
     }
+}
+
+void ListAvailableNetworks() {
+    HANDLE hClient = NULL;
+    DWORD dwVersion = 0;
+    WLAN_INTERFACE_INFO_LIST *pIfList = NULL;
+    WLAN_INTERFACE_INFO *pIfInfo = NULL;
+    DWORD dwResult = 0;
+
+    // Initialize WLAN API
+    dwResult = WlanOpenHandle(2, NULL, &dwVersion, &hClient);
+    if (dwResult != ERROR_SUCCESS) {
+        PrintErrorMessage(dwResult);
+        return;
+    }
+
+    // Enumerate wireless interfaces
+    dwResult = WlanEnumInterfaces(hClient, NULL, &pIfList);
+    if (dwResult != ERROR_SUCCESS) {
+        PrintErrorMessage(dwResult);
+        return;
+    }
+
+    // Check if there are available interfaces
+    if (pIfList->dwNumberOfItems == 0) {
+        printf("No wireless interfaces found.\n");
+        return;
+    }
+
+    pIfInfo = &pIfList->InterfaceInfo[0]; // Assuming we only work with the first interface
+
+    // Scan for available networks
+    dwResult = WlanScan(hClient, &pIfInfo->InterfaceGuid, NULL, NULL, NULL);
+    if (dwResult != ERROR_SUCCESS) {
+        PrintErrorMessage(dwResult);
+        return;
+    }
+
+    // Wait a few seconds for the scan to complete
+    printf("Scanning for networks...\n");
+    Sleep(5000);
+
+    // Get scan results
+    PWLAN_BSS_LIST pBssList = NULL;
+    dwResult = WlanGetNetworkBssList(hClient, &pIfInfo->InterfaceGuid, NULL, dot11_BSS_type_any, FALSE, NULL, &pBssList);
+    if (dwResult != ERROR_SUCCESS) {
+        PrintErrorMessage(dwResult);
+        return;
+    }
+
+    // Display the list of available networks
+    printf("Available Networks:\n");
+    for (DWORD i = 0; i < pBssList->dwNumberOfItems; i++) {
+        WLAN_BSS_ENTRY bssEntry = pBssList->wlanBssEntries[i];
+        printf("%d. SSID: %.*s, BSSID: ", i + 1, bssEntry.dot11Ssid.uSSIDLength, bssEntry.dot11Ssid.ucSSID);
+        PrintBssid(bssEntry.dot11Bssid);
+        printf(", Signal Strength: %d dBm\n", bssEntry.rssi);
+    }
+
+    // Clean up
+    if (pBssList != NULL) {
+        WlanFreeMemory(pBssList);
+    }
+    if (pIfList != NULL) {
+        WlanFreeMemory(pIfList);
+    }
+    WlanCloseHandle(hClient, NULL);
 }
 
 int main() {
-    char cmd[MAX_CMD_LEN];
-    char output[MAX_OUTPUT_LEN] = "";
-
-    // Command to run tshark and capture beacon frames
-    // Ensure to replace "Wi-Fi" with the name of your network interface
-    snprintf(cmd, sizeof(cmd), "tshark -i Wi-Fi -T fields -e wlan.bssid -e wlan.ssid -f \"type mgt subtype beacon\"");
-
-    printf("Scanning for nearby networks...\n");
-
-    // Run the tshark command and capture its output
-    run_tshark(cmd, output);
-
-    // Parse and display the results
-    parse_tshark_output(output);
-
+    ListAvailableNetworks();
     return 0;
 }
