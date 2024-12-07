@@ -1,27 +1,42 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-int main() {
-    // Command to capture Wi-Fi networks with SSID and BSSID using tshark
-    // Replace 'Wi-Fi' with your network interface name (it could be something like 'Wi-Fi', 'Ethernet', etc.)
-    // This command captures the BSSID and SSID for networks in range.
-    const char *tshark_command = "tshark -i Wi-Fi -Y 'wlan.fc.type_subtype == 0x08' -T fields -e wlan.ssid -e wlan.bssid";
+#define INTERFACE_INDEX 1  // Set this to the correct index for "Wi-Fi" from tshark -D
+#define COMMAND "tshark -i %d -T fields -e wlan.bssid -e wlan.ssid -e radiotap.dbm_antsignal -Y 'wlan.fc.type_subtype == 0x08'"
 
-    // Run the tshark command and display the output
-    FILE *fp = popen(tshark_command, "r");
+// Function to run tshark command and print the output
+void capture_networks() {
+    FILE *fp;
+    char output[1024];
+    char command[256];
+
+    // Build the tshark command dynamically based on the interface index
+    snprintf(command, sizeof(command), COMMAND, INTERFACE_INDEX);
+
+    // Run tshark to capture BSSID, ESSID, and signal strength
+    fp = popen(command, "r");
     if (fp == NULL) {
         perror("Failed to run tshark command");
-        return 1;
+        exit(1);
     }
 
-    // Print the networks found with SSID and BSSID
-    printf("Available Networks:\n");
-    char result[1024];
-    while (fgets(result, sizeof(result), fp) != NULL) {
-        printf("%s", result);
+    // Read and display the output
+    printf("BSSID            ESSID              Signal Strength (dBm)\n");
+    printf("----------------------------------------------------------\n");
+
+    while (fgets(output, sizeof(output), fp) != NULL) {
+        // Clean the output line
+        output[strcspn(output, "\n")] = 0;  // Remove newline character
+        
+        // Display captured data
+        printf("%s\n", output);
     }
 
-    // Close the file pointer
     fclose(fp);
+}
+
+int main() {
+    capture_networks();
     return 0;
 }
