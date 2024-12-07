@@ -42,7 +42,7 @@ def get_available_networks():
         if signal_match:
             network["Signal Strength (RSSI)"] = signal_match.group(1)  # RSSI value without percentage
 
-    # Append the last network
+    # Append the last network if present
     if network:
         networks.append(network)
 
@@ -54,7 +54,13 @@ def display_networks(networks):
     print("="*80)
     
     for network in networks:
-        print(f"{network['ESSID']:<30} {network['BSSID']:<20} {network['Channel']:<10} {network['Signal Strength (RSSI)']}")
+        # Safely retrieve values from network dictionary
+        essid = network.get("ESSID", "N/A")
+        bssid = network.get("BSSID", "N/A")
+        channel = network.get("Channel", "N/A")
+        signal_strength = network.get("Signal Strength (RSSI)", "N/A")
+        
+        print(f"{essid:<30} {bssid:<20} {channel:<10} {signal_strength}")
 
 # Get available networks and display them
 networks = get_available_networks()
