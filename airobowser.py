@@ -27,5 +27,5 @@ def capture_beacon_frames(pcap_file):
 
 # Main function
 if __name__ == "__main__":
-    pcap_file = "cap.pcap"  # Replace with the path to your PCAP file
+    pcap_file = r"C:\devil\cap.pcap"  # Correct file path to your PCAP
     capture_beacon_frames(pcap_file)
