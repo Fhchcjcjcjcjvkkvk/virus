@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>  // For sleep()
 
 #define INTERFACE_INDEX 1  // Set this to the correct index for "Wi-Fi" from tshark -D
 #define COMMAND "tshark -i %d -T fields -e wlan.bssid -e wlan.ssid -e radiotap.dbm_antsignal -Y \"wlan.fc.type_subtype == 0x08\""
@@ -21,16 +22,19 @@ void capture_networks() {
         exit(1);
     }
 
-    // Read and display the output
-    printf("BSSID            ESSID              Signal Strength (dBm)\n");
-    printf("----------------------------------------------------------\n");
+    // Continuously capture data in real-time
+    while (1) {
+        // Read and display the output
+        if (fgets(output, sizeof(output), fp) != NULL) {
+            // Clean the output line
+            output[strcspn(output, "\n")] = 0;  // Remove newline character
 
-    while (fgets(output, sizeof(output), fp) != NULL) {
-        // Clean the output line
-        output[strcspn(output, "\n")] = 0;  // Remove newline character
-        
-        // Display captured data
-        printf("%s\n", output);
+            // Display captured data
+            printf("%s\n", output);
+        }
+
+        // Sleep for a while to avoid overloading the terminal with output
+        usleep(500000);  // Sleep for 500 milliseconds (0.5 second)
     }
 
     fclose(fp);
