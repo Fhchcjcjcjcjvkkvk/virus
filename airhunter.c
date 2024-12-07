@@ -1,95 +1,147 @@
-#include <windows.h>
-#include <wlanapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#pragma comment(lib, "wlanapi.lib")
-#pragma comment(lib, "ole32.lib")
+#define MAX_NETWORKS 100
+#define ESSID_MAX_LENGTH 32
+#define BSSID_LENGTH 17
+#define MAX_STATIONS 100
 
-void PrintErrorMessage(DWORD dwError) {
-    LPVOID lpMsgBuf;
-    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-                  NULL, dwError, 0, (LPTSTR)&lpMsgBuf, 0, NULL);
-    printf("Error: %s\n", (char*)lpMsgBuf);
-    LocalFree(lpMsgBuf);
-}
+// Structure to hold network information
+struct network_info {
+    char essid[ESSID_MAX_LENGTH];
+    char bssid[BSSID_LENGTH + 1];
+    int rssi;  // RSSI is in dBm
+};
 
-void PrintBssid(BYTE *bssid) {
-    for (int i = 0; i < 6; i++) {
-        printf("%02X", bssid[i]);
-        if (i < 5) printf(":");
+// Structure to hold station information
+struct station_info {
+    char mac_address[BSSID_LENGTH + 1];
+    char interface_name[32];
+};
+
+// Global arrays to hold the networks and stations found
+struct network_info networks[MAX_NETWORKS];
+struct station_info stations[MAX_STATIONS];
+int network_count = 0;
+int station_count = 0;
+
+// Function to parse the output of the netsh command for available networks
+void parse_netsh_output(FILE *fp) {
+    char line[256];
+    struct network_info current_network;
+    int in_network = 0;
+
+    while (fgets(line, sizeof(line), fp)) {
+        // Look for the start of a network block
+        if (strstr(line, "SSID") != NULL && strstr(line, "BSSID") != NULL) {
+            // Reset current network info for a new network
+            in_network = 1;
+            memset(&current_network, 0, sizeof(current_network));
+        }
+
+        // Get BSSID (MAC address of the access point)
+        if (in_network && strstr(line, "BSSID") != NULL) {
+            sscanf(line, "    BSSID %*d : %s", current_network.bssid);
+        }
+
+        // Get ESSID (network name)
+        if (in_network && strstr(line, "SSID") != NULL) {
+            sscanf(line, "    SSID %*d  : \"%[^\"]\"", current_network.essid);
+        }
+
+        // Get Signal Strength (RSSI)
+        if (in_network && strstr(line, "Signal") != NULL) {
+            sscanf(line, "    Signal  : %d", &current_network.rssi);
+        }
+
+        // End of a network block, save the network info
+        if (in_network && line[0] == '\n') {
+            if (current_network.essid[0] != '\0' && current_network.bssid[0] != '\0') {
+                networks[network_count++] = current_network;
+            }
+            in_network = 0;
+        }
     }
 }
 
-void ListAvailableNetworks() {
-    HANDLE hClient = NULL;
-    DWORD dwVersion = 0;
-    WLAN_INTERFACE_INFO_LIST *pIfList = NULL;
-    WLAN_INTERFACE_INFO *pIfInfo = NULL;
-    DWORD dwResult = 0;
+// Function to run the netsh command and parse the output for Wi-Fi networks
+void scan_wifi() {
+    FILE *fp;
+    const char *command = "netsh wlan show networks mode=bssid";
 
-    // Initialize WLAN API
-    dwResult = WlanOpenHandle(2, NULL, &dwVersion, &hClient);
-    if (dwResult != ERROR_SUCCESS) {
-        PrintErrorMessage(dwResult);
-        return;
+    // Run the command and open the output as a file
+    fp = _popen(command, "r");
+    if (fp == NULL) {
+        perror("Error opening netsh output");
+        exit(1);
     }
 
-    // Enumerate wireless interfaces
-    dwResult = WlanEnumInterfaces(hClient, NULL, &pIfList);
-    if (dwResult != ERROR_SUCCESS) {
-        PrintErrorMessage(dwResult);
-        return;
+    // Parse the output
+    parse_netsh_output(fp);
+
+    // Close the file pointer
+    fclose(fp);
+}
+
+// Function to run the netsh command and parse the output for connected interfaces (stations)
+void show_connected_stations() {
+    FILE *fp;
+    const char *command = "netsh wlan show interfaces";
+
+    // Run the command and open the output as a file
+    fp = _popen(command, "r");
+    if (fp == NULL) {
+        perror("Error opening netsh output");
+        exit(1);
     }
 
-    // Check if there are available interfaces
-    if (pIfList->dwNumberOfItems == 0) {
-        printf("No wireless interfaces found.\n");
-        return;
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        // Look for connected stations (MAC address of the interface)
+        if (strstr(line, "Connected") != NULL) {
+            sscanf(line, "    SSID                   : %*s");
+        }
+        if (strstr(line, "BSSID") != NULL) {
+            sscanf(line, "    BSSID                  : %s", stations[station_count].mac_address);
+            station_count++;
+        }
+
     }
 
-    pIfInfo = &pIfList->InterfaceInfo[0]; // Assuming we only work with the first interface
+    fclose(fp);
+}
 
-    // Scan for available networks
-    dwResult = WlanScan(hClient, &pIfInfo->InterfaceGuid, NULL, NULL, NULL);
-    if (dwResult != ERROR_SUCCESS) {
-        PrintErrorMessage(dwResult);
-        return;
+// Function to display the networks found
+void display_networks() {
+    printf("\nFound Wi-Fi Networks:\n");
+    printf("%-20s %-30s %-10s\n", "BSSID", "SSID", "Signal Strength (dBm)");
+    for (int i = 0; i < network_count; i++) {
+        printf("%-20s %-30s %-10d\n", networks[i].bssid, networks[i].essid, networks[i].rssi);
     }
+}
 
-    // Wait a few seconds for the scan to complete
-    printf("Scanning for networks...\n");
-    Sleep(5000);
-
-    // Get scan results
-    PWLAN_BSS_LIST pBssList = NULL;
-    dwResult = WlanGetNetworkBssList(hClient, &pIfInfo->InterfaceGuid, NULL, dot11_BSS_type_any, FALSE, NULL, &pBssList);
-    if (dwResult != ERROR_SUCCESS) {
-        PrintErrorMessage(dwResult);
-        return;
+// Function to display connected stations (clients)
+void display_stations() {
+    printf("\nConnected Stations (Clients):\n");
+    printf("%-20s %-30s\n", "MAC Address", "Interface");
+    for (int i = 0; i < station_count; i++) {
+        printf("%-20s %-30s\n", stations[i].mac_address, stations[i].interface_name);
     }
-
-    // Display the list of available networks
-    printf("Available Networks:\n");
-    for (DWORD i = 0; i < pBssList->dwNumberOfItems; i++) {
-        WLAN_BSS_ENTRY bssEntry = pBssList->wlanBssEntries[i];
-        printf("%d. SSID: %.*s, BSSID: ", i + 1, bssEntry.dot11Ssid.uSSIDLength, bssEntry.dot11Ssid.ucSSID);
-        PrintBssid(bssEntry.dot11Bssid);
-        printf(", Signal Strength: %d dBm\n", bssEntry.rssi);
-    }
-
-    // Clean up
-    if (pBssList != NULL) {
-        WlanFreeMemory(pBssList);
-    }
-    if (pIfList != NULL) {
-        WlanFreeMemory(pIfList);
-    }
-    WlanCloseHandle(hClient, NULL);
 }
 
 int main() {
-    ListAvailableNetworks();
+    // Scan for Wi-Fi networks
+    scan_wifi();
+
+    // Show connected stations (clients)
+    show_connected_stations();
+
+    // Display the found networks
+    display_networks();
+
+    // Display the stations
+    display_stations();
+
     return 0;
 }
