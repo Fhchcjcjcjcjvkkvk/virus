@@ -4,13 +4,13 @@ import pyshark
 import time
 
 # Funkce pro sniffování WPA handshakes a celého provozu na specifikovaném kanálu a BSSID pomocí Scapy
-def sniff_eapol_packets(ap_mac, channel, output_file):
-    print(f"Sniffing for WPA handshakes and all traffic on AP {ap_mac} (Channel {channel})...")
+def sniff_eapol_packets(ap_mac, channel, iface, output_file):
+    print(f"Sniffing for WPA handshakes and all traffic on AP {ap_mac} (Channel {channel}) on interface {iface}...")
 
     # Zajistěte, že váš Wi-Fi adaptér je v monitorovacím režimu a nastavte kanál v externím nástroji (např. Wireshark, Acrylic Wi-Fi)
-    
-    # Nastavení rozhraní na správné Wi-Fi rozhraní, například "Wi-Fi" nebo "WiFi 2"
-    conf.iface = "WiFi 2"  # Nahraďte názvem vašeho Wi-Fi rozhraní na Windows
+
+    # Nastavení rozhraní na správné Wi-Fi rozhraní
+    conf.iface = iface  # Nastavíme rozhraní zadané uživatelem
 
     # Filtr pro všechny pakety a EAPOL pakety (EtherType 0x888e)
     bpf_filter = f"ether proto 0x888e or ip or udp or tcp or icmp"  # Filtr pro EAPOL a všechny IP pakety
@@ -18,7 +18,7 @@ def sniff_eapol_packets(ap_mac, channel, output_file):
     print("Listening for all traffic and EAPOL packets...")
 
     # Zachytávání paketů
-    packets = sniff(count=100, filter=bpf_filter, timeout=60)  # Počet paketů a časový limit na 60 sekund
+    packets = sniff(count=100, filter=bpf_filter, iface=iface, timeout=60)  # Počet paketů a časový limit na 60 sekund
 
     # Pokud je zadán soubor, uložíme capture do souboru
     if output_file:
@@ -51,12 +51,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Wi-Fi WPA Handshake Sniffer")
     parser.add_argument("-a", "--ap", required=True, help="AP MAC address")
     parser.add_argument("-c", "--channel", type=int, required=True, help="Channel number to monitor")
+    parser.add_argument("-i", "--iface", required=True, help="Wi-Fi interface to use")
     parser.add_argument("--write", type=str, help="Filename to save the capture (e.g. capture.pcap)")
 
     args = parser.parse_args()
 
     # Zavolání funkce pro sniffování WPA handshakes a celého provozu
-    sniff_eapol_packets(args.ap, args.channel, args.write)
+    sniff_eapol_packets(args.ap, args.channel, args.iface, args.write)
 
     # Pokud byl zadán soubor, provedeme analýzu zachycených paketů
     if args.write:
