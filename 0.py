@@ -1,57 +1,67 @@
 import subprocess
 import re
 
-def get_available_networks():
+def get_networks():
     try:
-        # Execute the netsh command to show available networks
-        result = subprocess.run(["netsh", "wlan", "show", "networks", "mode=bssid"],
-                                capture_output=True, text=True, check=True)
-        networks_output = result.stdout
+        # Run the netsh command to list Wi-Fi networks
+        result = subprocess.check_output(["netsh", "wlan", "show", "networks", "mode=bssid"], shell=True, text=True)
         
         networks = []
         network = {}
-
-        for line in networks_output.splitlines():
+        for line in result.splitlines():
             line = line.strip()
             
-            # Match SSID
-            if line.startswith("SSID"):
-                if network:  # If a network is already parsed, store it and reset
+            # Match network name (SSID)
+            ssid_match = re.match(r"^SSID\s\d+\s*:\s(.*)", line)
+            if ssid_match:
+                if network:  # Save the previous network if it exists
                     networks.append(network)
                     network = {}
-                network["SSID"] = line.split(":")[1].strip() if ":" in line else None
+                network['SSID'] = ssid_match.group(1)
             
             # Match BSSID
-            elif "BSSID" in line:
-                network.setdefault("BSSIDs", []).append(line.split(":")[1].strip())
+            bssid_match = re.match(r"^BSSID\s\d+\s*:\s(.*)", line)
+            if bssid_match:
+                network.setdefault('BSSIDs', []).append(bssid_match.group(1))
             
             # Match signal strength
-            elif "Signal" in line:
-                signal_match = re.search(r"(\d+)%", line)
-                if signal_match:
-                    network["Signal Strength"] = int(signal_match.group(1))
+            signal_match = re.match(r"^Signal\s*:\s(\d+)%", line)
+            if signal_match:
+                network['Signal Strength'] = signal_match.group(1) + '%'
             
-            # Match Channel
-            elif "Channel" in line:
-                network["Channel"] = line.split(":")[1].strip()
+            # Match channel
+            channel_match = re.match(r"^Channel\s*:\s(\d+)", line)
+            if channel_match:
+                network['Channel'] = channel_match.group(1)
+            
+            # Beacon frames (not directly available in netsh, example added for structure)
+            # If you use specialized tools like Wireshark or pyshark, you can extract beacon frame data.
+            # Placeholder for illustrative purposes:
+            network['Beacons'] = "N/A"
 
-        # Add the last network if not already added
+        # Append the last network if it exists
         if network:
             networks.append(network)
 
         return networks
-
     except subprocess.CalledProcessError as e:
-        print("Error executing netsh command:", e)
+        print("Error running netsh command:", e)
         return []
 
-# Fetch and print available networks
-if __name__ == "__main__":
-    available_networks = get_available_networks()
-    for idx, network in enumerate(available_networks, start=1):
-        print(f"Network {idx}:")
+def display_networks(networks):
+    if not networks:
+        print("No networks found.")
+        return
+
+    for i, network in enumerate(networks, 1):
+        print(f"Network {i}:")
         print(f"  SSID: {network.get('SSID', 'N/A')}")
         print(f"  BSSIDs: {', '.join(network.get('BSSIDs', []))}")
-        print(f"  Signal Strength: {network.get('Signal Strength', 'N/A')}%")
+        print(f"  Signal Strength: {network.get('Signal Strength', 'N/A')}")
         print(f"  Channel: {network.get('Channel', 'N/A')}")
-        print()
+        print(f"  Beacons: {network.get('Beacons', 'N/A')}")
+        print("-" * 30)
+
+if __name__ == "__main__":
+    networks = get_networks()
+    display_networks(networks)
