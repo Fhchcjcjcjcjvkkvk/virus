@@ -27,7 +27,7 @@ def capture_eapol(interface, bssid, output_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture WPA Handshake from a network.")
-    parser.add_argument("--interface", required=True, help="Network interface to capture packets.")
+    parser.add_argument("--interface", required=True, help="Network interface to capture packets (e.g., Wi-Fi).")
     parser.add_argument("--bssid", required=True, help="BSSID of the target network.")
     parser.add_argument("--write", required=True, help="File to save the captured packets (e.g., capture.pcap).")
 
