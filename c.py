@@ -1,41 +1,35 @@
+import argparse
 import pyshark
-import sys
+import time
 
-# Function to handle packet processing
-def packet_handler(packet):
-    try:
-        if 'wlan' in packet:
-            # Extracting BSSID, ESSID, and channel from beacon frames (Type: Beacon)
-            if 'wlan_mgt' in packet:
-                # Beacon frame or probe request frame
-                bssid = packet.wlan.bssid
-                ssid = packet.wlan.ssid if hasattr(packet.wlan, 'ssid') else 'N/A'
-                channel = packet.wlan_radio.channel if hasattr(packet.wlan_radio, 'channel') else 'N/A'
-                signal_strength = packet.dbm_antsignal if hasattr(packet, 'dbm_antsignal') else 'N/A'
-                encryption = packet.wlan.encryption if hasattr(packet.wlan, 'encryption') else 'None'
-                cipher = packet.wlan.cipher if hasattr(packet.wlan, 'cipher') else 'N/A'
-                print(f"BSSID: {bssid}\tESSID: {ssid}\tCH: {channel}\tENC: {encryption}\tCIPHER: {cipher}\tSignal: {signal_strength} dBm")
+# Function to sniff for EAPOL packets and print the WPA handshake
+def sniff_eapol_packets(ap_mac, channel):
+    print(f"Sniffing for WPA handshakes on AP {ap_mac} (Channel {channel})...")
 
-            # WPA handshake detection (looking for 4-way handshake packets)
-            if 'eapol' in packet:
-                print(f"WPA Handshake detected for BSSID: {packet.wlan.bssid}")
-                
-    except AttributeError:
-        pass
+    # Specify the capture interface on Windows (you'll need to adjust this to your interface)
+    interface = "WiFi"  # Replace with your wireless interface name
+    capture_filter = f"ether host {ap_mac} and eapol"  # BPF filter for EAPOL packets
+    
+    # Start capturing EAPOL packets
+    capture = pyshark.LiveCapture(interface=interface, bpf_filter=capture_filter)
 
-# Function to start packet capture and process them
-def start_capture(interface):
-    print(f"Sniffing on {interface}...\n")
-    capture = pyshark.LiveCapture(interface=interface, bpf_filter='wlan')
-    capture.apply_on_packets(packet_handler)
+    print("Listening for EAPOL packets...")
 
-def main():
-    if len(sys.argv) != 3:
-        print("Usage: python airhunter.py <interface>")
-        sys.exit(1)
+    # Capture packets for 60 seconds (adjust as needed)
+    capture.sniff(timeout=60)
 
-    interface = sys.argv[2]
-    start_capture(interface)
+    for packet in capture:
+        if 'eapol' in packet:
+            print(f"WPA Handshake found for BSSID: {ap_mac}")
+            break  # Stop after the first WPA handshake
 
 if __name__ == "__main__":
-    main()
+    # Command-line argument parsing
+    parser = argparse.ArgumentParser(description="AirHunter - Sniff WPA Handshakes")
+    parser.add_argument("-a", "--ap", required=True, help="AP MAC address")
+    parser.add_argument("-c", "--channel", required=True, type=int, help="Channel number")
+
+    args = parser.parse_args()
+
+    # Call the sniff function with the provided AP MAC and channel
+    sniff_eapol_packets(args.ap, args.channel)
