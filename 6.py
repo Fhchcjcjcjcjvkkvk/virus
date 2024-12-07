@@ -7,7 +7,7 @@ def sniff_eapol_packets(ap_mac, channel, output_file):
     print(f"Sniffing for WPA handshakes on AP {ap_mac} (Channel {channel})...")
 
     # Specify the capture interface on Windows (you'll need to adjust this to your interface)
-    interface = "Wi-Fi"  # Replace with your wireless interface name
+    interface = "WiFi"  # Replace with your wireless interface name
     capture_filter = f"ether host {ap_mac} and eapol"  # BPF filter for EAPOL packets
     
     # Start capturing EAPOL packets
