@@ -1,39 +1,41 @@
-import scapy.all as scapy
-import time
+import pyshark
 import sys
-import os
 
-def sniff_packets(interface):
-    print(f"Sniffing on {interface}...\n")
-    scapy.sniff(iface=interface, store=False, prn=packet_handler)
-
+# Function to handle packet processing
 def packet_handler(packet):
-    if packet.haslayer(scapy.Dot11):
-        if packet.type == 0 and packet.subtype == 8:
-            # Beacon Frame
-            bssid = packet[scapy.Dot11].addr3
-            essid = packet[scapy.Dot11Elt].info.decode()
-            signal_strength = packet.dBm_AntSignal if packet.dBm_AntSignal else 'N/A'
-            channel = packet[scapy.Dot11Beacon].network_stats().get("channel")
-            encryption = "WPA2" if "WPA2" in essid else "WEP" if "WEP" in essid else "OPN"
-            cipher = "TKIP" if encryption == "WPA2" else "WEP"  # Just an example, needs better logic for cipher
-            print(f"BSSID: {bssid}\t ESSID: {essid}\t CH: {channel}\t ENC: {encryption}\t CIPHER: {cipher}\t Signal: {signal_strength} dBm")
-        elif packet.type == 2 and packet.subtype == 4:
-            # WPA Handshake
-            handshake = packet[scapy.Dot11].addr1
-            print(f"WPA Handshake detected: {handshake}")
+    try:
+        if 'wlan' in packet:
+            # Extracting BSSID, ESSID, and channel from beacon frames (Type: Beacon)
+            if 'wlan_mgt' in packet:
+                # Beacon frame or probe request frame
+                bssid = packet.wlan.bssid
+                ssid = packet.wlan.ssid if hasattr(packet.wlan, 'ssid') else 'N/A'
+                channel = packet.wlan_radio.channel if hasattr(packet.wlan_radio, 'channel') else 'N/A'
+                signal_strength = packet.dbm_antsignal if hasattr(packet, 'dbm_antsignal') else 'N/A'
+                encryption = packet.wlan.encryption if hasattr(packet.wlan, 'encryption') else 'None'
+                cipher = packet.wlan.cipher if hasattr(packet.wlan, 'cipher') else 'N/A'
+                print(f"BSSID: {bssid}\tESSID: {ssid}\tCH: {channel}\tENC: {encryption}\tCIPHER: {cipher}\tSignal: {signal_strength} dBm")
+
+            # WPA handshake detection (looking for 4-way handshake packets)
+            if 'eapol' in packet:
+                print(f"WPA Handshake detected for BSSID: {packet.wlan.bssid}")
+                
+    except AttributeError:
+        pass
+
+# Function to start packet capture and process them
+def start_capture(interface):
+    print(f"Sniffing on {interface}...\n")
+    capture = pyshark.LiveCapture(interface=interface, bpf_filter='wlan')
+    capture.apply_on_packets(packet_handler)
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: python airhunter.py -a <ap_mac> <interface>")
+        print("Usage: python airhunter.py <interface>")
         sys.exit(1)
 
-    if sys.argv[1] == "-a":
-        ap_mac = sys.argv[2]
-        interface = sys.argv[3]
-        sniff_packets(interface)
-    else:
-        print("Invalid arguments. Use: python airhunter.py -a <ap_mac> <interface>")
+    interface = sys.argv[2]
+    start_capture(interface)
 
 if __name__ == "__main__":
     main()
