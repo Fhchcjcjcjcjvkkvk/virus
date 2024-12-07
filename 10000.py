@@ -10,8 +10,8 @@ def sniff_eapol_packets(ap_mac, channel, output_file):
     conf.iface = "WiFi"  # Nahraďte názvem vašeho rozhraní
     set_channel(channel)
 
-    # Filtr pro EAPOL pakety
-    bpf_filter = f"ether host {ap_mac} and eapol"
+    # Filtr pro EAPOL pakety (EtherType 0x888e)
+    bpf_filter = f"ether proto 0x888e and ether host {ap_mac}"
 
     # Zachytávání paketů
     print("Listening for EAPOL packets...")
