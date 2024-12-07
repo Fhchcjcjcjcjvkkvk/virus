@@ -2,11 +2,9 @@
 #include <stdlib.h>
 #include <pcap.h>
 #include <string.h>
-#include <winsock2.h>
-#include <windows.h>
-#include <iphlpapi.h>
 
 #define EAPOL_TYPE 0x88
+#define BUFFER_SIZE 2048
 
 // Function to handle packets
 void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
@@ -31,8 +29,10 @@ void start_capture(const char *interface, const char *bssid, const char *filenam
         exit(1);
     }
 
-    // Open the network interface for sniffing in monitor/promiscuous mode
-    handle = pcap_open_live(interface, 2048, 1, 1000, errbuf);
+    pcap_dumper_t *pcap_dump = pcap_dump_fopen(handle, outfile);
+
+    // Open the network interface for sniffing in monitor mode
+    handle = pcap_open_live(interface, BUFFER_SIZE, 1, 1000, errbuf);
     if (handle == NULL) {
         fprintf(stderr, "Error opening device %s: %s\n", interface, errbuf);
         exit(1);
@@ -54,7 +54,6 @@ void start_capture(const char *interface, const char *bssid, const char *filenam
     }
 
     // Start capturing packets
-    pcap_dumper_t *pcap_dump = pcap_dump_fopen(handle, outfile);
     pcap_loop(handle, 0, packet_handler, (u_char *)pcap_dump);
 
     // Clean up
