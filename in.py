@@ -1,30 +1,50 @@
+import sys
+from scapy.all import sniff, Dot11, Dot11Elt, EAPOL, wrpcap
 import subprocess
-import re
+import time
 
-def scan_wifi_networks():
-    # Run the command to get WiFi information
-    command = "netsh wlan show networks mode=bssid"
-    result = subprocess.run(command, capture_output=True, text=True, shell=True)
+# Global list to store EAPOL packets
+eapol_packets = []
 
-    if result.returncode != 0:
-        print("Error scanning for networks.")
-        return
+def packet_handler(pkt):
+    """
+    Function to handle incoming packets.
+    Capture only EAPOL frames from the specified AP.
+    """
+    if pkt.haslayer(EAPOL):
+        # Check if the packet is from the target AP (using its MAC address)
+        if pkt[Dot11].addr2 == ap_mac:  # Assuming AP MAC address is in address 2
+            eapol_packets.append(pkt)
+            print(f"Captured EAPOL packet from {ap_mac}.")
 
-    # Regular expression patterns to extract the ESSID, BSSID, and RSSI
-    essid_pattern = re.compile(r"SSID \d+ : (.+)")
-    bssid_pattern = re.compile(r"BSSID \d+ : ([\da-fA-F:]+)")
-    rssi_pattern = re.compile(r"Signal\s+:\s+(\d+)")
+def capture_eapol(interface, channel, output_file):
+    """
+    Function to capture EAPOL packets from the specified interface and channel
+    and write them to a .pcap file.
+    """
+    # Set the channel using netsh (you may need to install netsh or use a different method)
+    print(f"Setting channel to {channel} on {interface}...")
+    subprocess.run(f"netsh wlan set hostednetwork channel={channel}", shell=True)
     
-    # Extract network details
-    essids = essid_pattern.findall(result.stdout)
-    bssids = bssid_pattern.findall(result.stdout)
-    rssis = rssi_pattern.findall(result.stdout)
-    
-    # Print the results
-    print(f"{'ESSID':<30}{'BSSID':<20}{'RSSI (Signal Strength)'}")
-    print("="*60)
-    for essid, bssid, rssi in zip(essids, bssids, rssis):
-        print(f"{essid:<30}{bssid:<20}{rssi}")
+    # Start sniffing on the given interface
+    print(f"Sniffing for EAPOL packets on {interface}...")
+    sniff(iface=interface, prn=packet_handler, store=0, timeout=60)  # Timeout for 60 seconds
+
+    # Write captured packets to a .pcap file
+    if eapol_packets:
+        print(f"Writing {len(eapol_packets)} packets to {output_file}.pcap...")
+        wrpcap(output_file, eapol_packets)
+    else:
+        print("No EAPOL packets captured.")
 
 if __name__ == "__main__":
-    scan_wifi_networks()
+    if len(sys.argv) != 5:
+        print("Usage: python capture_eapol.py <AP MAC> <interface> <channel> <output_file>")
+        sys.exit(1)
+
+    ap_mac = sys.argv[1]   # AP MAC address to capture from
+    interface = sys.argv[2]  # Interface in monitor mode (e.g., wlan0mon or Wi-Fi adapter)
+    channel = int(sys.argv[3])  # Channel to monitor
+    output_file = sys.argv[4]  # Output file for .pcap
+
+    capture_eapol(interface, channel, output_file)
