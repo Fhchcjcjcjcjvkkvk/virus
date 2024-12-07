@@ -33,14 +33,15 @@ def scan_wifi():
         
         # Signal Strength line (RSSI)
         if "Signal" in line:
+            # Extract signal strength in dBm (without percentage)
             current_network['Signal Strength'] = line.split(":")[1].strip()
 
     # Add the last network if present
     if current_network:
         networks.append(current_network)
 
-    # Display the networks with ESSID, BSSID, and Signal Strength
-    print(f"{'ESSID':<30} {'BSSID':<20} {'Signal Strength'}")
+    # Display the networks with ESSID, BSSID, and Signal Strength in dBm
+    print(f"{'ESSID':<30} {'BSSID':<20} {'Signal Strength (dBm)'}")
     print("="*70)
     for network in networks:
         print(f"{network['ESSID']:<30} {network['BSSID']:<20} {network.get('Signal Strength', 'Not Available')}")
