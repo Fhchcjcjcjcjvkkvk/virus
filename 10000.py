@@ -7,7 +7,7 @@ def sniff_eapol_packets(ap_mac, channel, output_file):
     print(f"Sniffing for WPA handshakes on AP {ap_mac} (Channel {channel})...")
 
     # Přepnutí Wi-Fi adaptéru na specifikovaný kanál
-    conf.iface = "Wi-Fi"  # Nahraďte názvem vašeho rozhraní
+    conf.iface = "WiFi"  # Nahraďte názvem vašeho rozhraní
     set_channel(channel)
 
     # Filtr pro EAPOL pakety
@@ -37,7 +37,7 @@ def sniff_eapol_packets(ap_mac, channel, output_file):
 # Funkce pro přepnutí kanálu
 def set_channel(channel):
     # Pomocí Scapy můžeme přepnout kanál pro Wi-Fi adaptér
-    conf.iface = "Wi-Fi"  # Nahraďte názvem vašeho rozhraní
+    conf.iface = "WiFi"  # Nahraďte názvem vašeho rozhraní
     os.system(f"netsh interface wlan set channel {channel}")
 
 if __name__ == "__main__":
