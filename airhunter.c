@@ -1,102 +1,68 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 
-#define MAX_NETWORKS 100
-#define ESSID_MAX_LENGTH 32
-#define BSSID_LENGTH 17
+#define MAX_NETWORKS 10
+#define SSID_LENGTH 100
+#define BSSID_LENGTH 20
 
-// Structure to hold network information
-struct network_info {
-    char essid[ESSID_MAX_LENGTH];
-    char bssid[BSSID_LENGTH + 1];
-    int rssi;  // RSSI is in dBm
-};
-
-// Global array to hold the networks found
-struct network_info networks[MAX_NETWORKS];
-int network_count = 0;
-
-// Function to parse the output of the netsh command for available networks
-void parse_netsh_output(FILE *fp) {
-    char line[256];
-    struct network_info current_network;
-    int in_network = 0;
-
-    while (fgets(line, sizeof(line), fp)) {
-        printf("Line read: %s", line);  // Debugging output to see what is being read
-        
-        // Look for the start of a network block
-        if (strstr(line, "SSID") != NULL && strstr(line, "BSSID") != NULL) {
-            // Reset current network info for a new network
-            in_network = 1;
-            memset(&current_network, 0, sizeof(current_network));
-        }
-
-        // Get BSSID (MAC address of the access point)
-        if (in_network && strstr(line, "BSSID") != NULL) {
-            sscanf(line, "    BSSID %*d : %s", current_network.bssid);
-        }
-
-        // Get ESSID (network name)
-        if (in_network && strstr(line, "SSID") != NULL) {
-            sscanf(line, "    SSID %*d  : \"%[^\"]\"", current_network.essid);
-        }
-
-        // Get Signal Strength (RSSI)
-        if (in_network && strstr(line, "Signal") != NULL) {
-            sscanf(line, "    Signal  : %d", &current_network.rssi);
-        }
-
-        // End of a network block, save the network info
-        if (in_network && line[0] == '\n') {
-            if (current_network.essid[0] != '\0' && current_network.bssid[0] != '\0') {
-                networks[network_count++] = current_network;
-            }
-            in_network = 0;
-        }
-    }
-}
-
-// Function to run the netsh command and parse the output for Wi-Fi networks
-void scan_wifi() {
-    FILE *fp;
-    const char *command = "netsh wlan show networks mode=bssid";
-
-    // Run the command and open the output as a file
-    fp = _popen(command, "r");
-    if (fp == NULL) {
-        perror("Error opening netsh output");
-        exit(1);
-    }
-
-    // Parse the output
-    parse_netsh_output(fp);
-
-    // Close the file pointer
-    fclose(fp);
-}
-
-// Function to display the networks found
-void display_networks() {
-    if (network_count == 0) {
-        printf("No networks found.\n");
-        return;
-    }
-
-    printf("\nFound Wi-Fi Networks:\n");
-    printf("%-20s %-30s %-10s\n", "BSSID", "SSID", "Signal Strength (dBm)");
-    for (int i = 0; i < network_count; i++) {
-        printf("%-20s %-30s %-10d\n", networks[i].bssid, networks[i].essid, networks[i].rssi);
-    }
-}
+// Structure to store Wi-Fi network information
+typedef struct {
+    char ssid[SSID_LENGTH];
+    char bssid[BSSID_LENGTH];
+    int signal_strength;
+} WiFiNetwork;
 
 int main() {
-    // Scan for Wi-Fi networks
-    scan_wifi();
+    // Declare an array to store Wi-Fi networks
+    WiFiNetwork networks[MAX_NETWORKS];
+    int network_count = 0;
+    
+    // Buffer to store the command output
+    char line[256];
 
-    // Display the found networks
-    display_networks();
+    // Open a process to execute the netsh command and get Wi-Fi networks
+    FILE *fp = _popen("netsh wlan show networks", "r");
+    if (fp == NULL) {
+        perror("Failed to run netsh command");
+        return 1;
+    }
+
+    // Read output line by line from the netsh command
+    while (fgets(line, sizeof(line), fp)) {
+        // Check for SSID line (example: "SSID 1 : MyNetwork")
+        if (strncmp(line, "SSID", 4) == 0) {
+            sscanf(line, "SSID %*d : \"%[^\"]\"", networks[network_count].ssid);
+        }
+        
+        // Check for BSSID line (example: "BSSID 1 : 00:14:22:01:32:44")
+        else if (strncmp(line, "BSSID", 5) == 0) {
+            sscanf(line, "BSSID %*d : %s", networks[network_count].bssid);
+        }
+        
+        // Check for Signal strength line (example: "Signal  : -65")
+        else if (strncmp(line, "Signal", 6) == 0) {
+            sscanf(line, "Signal  : %d", &networks[network_count].signal_strength);
+            
+            // After collecting full data for one network, increment the count
+            network_count++;
+        }
+        
+        // Stop if we've reached the maximum number of networks
+        if (network_count >= MAX_NETWORKS) {
+            break;
+        }
+    }
+
+    // Close the process
+    fclose(fp);
+
+    // Print the results in a table format
+    printf("Found Wi-Fi Networks:\n");
+    printf("BSSID               SSID                           Signal Strength (dBm)\n");
+    for (int i = 0; i < network_count; i++) {
+        printf("%-20s %-30s %-20d\n", networks[i].bssid, networks[i].ssid, networks[i].signal_strength);
+    }
 
     return 0;
 }
