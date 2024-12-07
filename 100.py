@@ -1,40 +1,53 @@
 import argparse
-import pyshark
+from scapy.all import *
 import time
 
-# Function to sniff for EAPOL packets and print the WPA handshake
-def sniff_eapol_packets(ap_mac, output_file):
-    print(f"Sniffing for WPA handshakes on AP {ap_mac}...")
+# Funkce pro sniffování WPA handshakes na specifikovaném kanálu a BSSID
+def sniff_eapol_packets(ap_mac, channel, output_file):
+    print(f"Sniffing for WPA handshakes on AP {ap_mac} (Channel {channel})...")
 
-    # Specify the capture interface on Windows (you'll need to adjust this to your interface)
-    interface = "WiFi 2"  # Replace with your wireless interface name
-    capture_filter = f"ether host {ap_mac} and eapol"  # BPF filter for EAPOL packets
-    
-    # Start capturing EAPOL packets
-    capture = pyshark.LiveCapture(interface=interface, bpf_filter=capture_filter)
+    # Přepnutí Wi-Fi adaptéru na specifikovaný kanál
+    conf.iface = "Wi-Fi 2"  # Nahraďte názvem vašeho rozhraní
+    set_channel(channel)
 
-    # If a filename is provided, save the capture to a file
-    if output_file:
-        print(f"Saving capture to {output_file}...")
-        capture.output_file = output_file
+    # Filtr pro EAPOL pakety
+    bpf_filter = f"ether host {ap_mac} and eapol"
 
+    # Zachytávání paketů
     print("Listening for EAPOL packets...")
+    
+    packets = sniff(count=100, filter=bpf_filter, timeout=60)  # Počet paketů a časový limit na 60 sekund
 
-    # Capture packets for 60 seconds (adjust as needed)
-    capture.sniff(timeout=60)
+    # Pokud je zadán soubor, uložíme capture do souboru
+    if output_file:
+        wrpcap(output_file, packets)
+        print(f"Capture saved to {output_file}")
 
-    for packet in capture:
-        if 'eapol' in packet:
+    # Kontrola, zda byly zachyceny EAPOL pakety
+    handshake_found = False
+    for packet in packets:
+        if packet.haslayer(EAPOL):
             print(f"WPA Handshake found for BSSID: {ap_mac}")
-            break  # Stop after the first WPA handshake
+            handshake_found = True
+            break  # Když najdeme první WPA handshake, zastavíme sniffování
+    
+    if not handshake_found:
+        print(f"No WPA handshake found for BSSID: {ap_mac}")
+
+# Funkce pro přepnutí kanálu
+def set_channel(channel):
+    # Pomocí Scapy můžeme přepnout kanál pro Wi-Fi adaptér
+    conf.iface = "Wi-Fi 2"  # Nahraďte názvem vašeho rozhraní
+    os.system(f"netsh interface wlan set channel {channel}")
 
 if __name__ == "__main__":
-    # Command-line argument parsing
-    parser = argparse.ArgumentParser(description="AirHunter - Sniff WPA Handshakes")
+    # Argumenty z příkazové řádky
+    parser = argparse.ArgumentParser(description="AirHunter - Sniff WPA Handshakes like airodump-ng")
     parser.add_argument("-a", "--ap", required=True, help="AP MAC address")
+    parser.add_argument("-c", "--channel", type=int, required=True, help="Channel number to monitor")
     parser.add_argument("--write", type=str, help="Filename to save the capture (e.g. capture.pcap)")
 
     args = parser.parse_args()
 
-    # Call the sniff function with the provided AP MAC and output file
-    sniff_eapol_packets(args.ap, args.write)
+    # Zavolání funkce pro sniffování WPA handshakes
+    sniff_eapol_packets(args.ap, args.channel, args.write)
