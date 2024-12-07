@@ -1,37 +1,49 @@
 import pyshark
 
-# Function to display network information from capture
-def display_wifi_info(packet):
-    # Filter out packets with WLAN (Wi-Fi) protocol
-    if 'wlan' in packet:
-        try:
-            # Extract necessary information from the packet
-            bssid = packet.wlan.bssid
-            channel = packet.wlan_channel if 'wlan_channel' in packet else 'N/A'
-            signal_strength = packet.wlan_signal_strength if 'wlan_signal_strength' in packet else 'N/A'
-            enc = packet.wlan.encryption if 'wlan.encryption' in packet else 'N/A'
-            cipher = packet.wlan.cipher if 'wlan.cipher' in packet else 'N/A'
-            essid = packet.wlan.ssid if 'wlan.ssid' in packet else 'N/A'
-            
-            # Print packet details (you can format this as needed)
-            print(f"BSSID: {bssid}, Channel: {channel}, Signal Strength: {signal_strength}, "
-                  f"Encryption: {enc}, Cipher: {cipher}, ESSID: {essid}")
-        except AttributeError as e:
-            pass
+# Function to process packets and extract relevant details
+def process_packet(pkt):
+    try:
+        if 'wlan' in pkt:
+            bssid = pkt.wlan.bssid
+            if hasattr(pkt, 'wlan_mgt'):
+                if hasattr(pkt.wlan_mgt, 'ssid'):
+                    ssid = pkt.wlan_mgt.ssid
+                else:
+                    ssid = "N/A"
+            else:
+                ssid = "N/A"
 
-# List available interfaces
-def list_interfaces():
-    interfaces = pyshark.LiveCapture.interfaces()
-    for i, interface in enumerate(interfaces):
-        print(f"{i}: {interface}")
+            # Extract WPA handshake
+            if hasattr(pkt, 'wlan_eapol'):
+                if pkt.wlan_eapol.eapol_type == '1':  # WPA Handshake
+                    print(f'WPA Handshake detected for BSSID: {bssid}')
 
-# Select interface (manual choice)
-interface_idx = int(input("Enter the index of the interface to capture on: "))
-interface = pyshark.LiveCapture.interfaces()[interface_idx]
+            # Check encryption and authentication methods
+            if hasattr(pkt, 'wlan_wep'):
+                encryption = "WEP"
+                cipher = "WEP"
+                auth = "Open"
+            elif hasattr(pkt, 'wlan_rsn'):
+                encryption = "WPA/WPA2"
+                cipher = "TKIP"  # Or AES depending on the packet
+                auth = "PSK"  # Assuming PSK based on the example
+            else:
+                encryption = "Unknown"
+                cipher = "Unknown"
+                auth = "Unknown"
 
-# Start capturing packets on the selected interface
-capture = pyshark.LiveCapture(interface=interface, display_filter="wlan")
+            # Display BSSID, SSID, Encryption info
+            print(f'BSSID: {bssid}  SSID: {ssid}  ENC: {encryption}  CIPHER: {cipher}  AUTH: {auth}')
+    except AttributeError as e:
+        pass
 
-# Loop through captured packets and process them
-for packet in capture.sniff_continuously():
-    display_wifi_info(packet)
+# Function to capture packets and display the output
+def capture_wifi_packets(interface="Wi-Fi"):
+    print(f"Starting WiFi packet capture on {interface}...")
+    cap = pyshark.LiveCapture(interface=interface)
+
+    for pkt in cap.sniff_continuously():
+        process_packet(pkt)
+
+if __name__ == "__main__":
+    capture_wifi_packets("Wi-Fi")  # Adjust interface name if needed
