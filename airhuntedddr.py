@@ -1,67 +1,42 @@
 import subprocess
 import re
 
-def get_available_networks():
-    # Run the netsh command to get available networks with detailed info
+def get_wifi_networks():
+    # Run the 'netsh wlan show networks mode=bssid' command to get Wi-Fi networks
     result = subprocess.run(["netsh", "wlan", "show", "networks", "mode=bssid"], capture_output=True, text=True)
-
-    # Split the output into lines for easier parsing
-    networks_info = result.stdout.splitlines()
-
+    output = result.stdout
+    
+    # Regular expression patterns for extracting network information
+    network_pattern = re.compile(r"SSID\s*:\s*(?P<ESSID>.+?)\r?\n.*?BSSID\s*:\s*(?P<BSSID>[\w:]+)\r?\n.*?Channel\s*:\s*(?P<Channel>\d+)\r?\n.*?Signal\s*:\s*(?P<SignalStrength>\d+)")
+    
     networks = []
-
-    # Regular expressions to capture ESSID, BSSID, Channel, Signal strength (RSSI)
-    essid_pattern = re.compile(r"SSID (\d+) : (.+)")
-    bssid_pattern = re.compile(r"BSSID (\d+) : (.+)")
-    channel_pattern = re.compile(r"Channel\s*: (\d+)")
-    signal_pattern = re.compile(r"Signal\s*: (\d+)")
-
-    network = {}
-
-    # Iterate through each line and parse relevant information
-    for line in networks_info:
-        # Match ESSID
-        essid_match = essid_pattern.search(line)
-        if essid_match:
-            if network:  # If a network was previously added, store it before moving on
-                networks.append(network)
-            network = {"ESSID": essid_match.group(2)}  # Initialize a new network dictionary
-
-        # Match BSSID
-        bssid_match = bssid_pattern.search(line)
-        if bssid_match:
-            network["BSSID"] = bssid_match.group(2)
-
-        # Match Channel
-        channel_match = channel_pattern.search(line)
-        if channel_match:
-            network["Channel"] = channel_match.group(1)
-
-        # Match Signal strength (RSSI value, no percentage)
-        signal_match = signal_pattern.search(line)
-        if signal_match:
-            network["Signal Strength (RSSI)"] = signal_match.group(1)  # RSSI value without percentage
-
-    # Append the last network if present
-    if network:
-        networks.append(network)
-
+    
+    # Iterate through all the matched networks in the output
+    for match in network_pattern.finditer(output):
+        essid = match.group("ESSID").strip()
+        bssid = match.group("BSSID")
+        channel = match.group("Channel")
+        signal_strength = match.group("SignalStrength")
+        
+        # Store the extracted information in a list
+        networks.append({
+            "ESSID": essid,
+            "BSSID": bssid,
+            "Channel": channel,
+            "SignalStrength": signal_strength + " dBm"
+        })
+    
     return networks
 
-# Function to display networks
 def display_networks(networks):
-    print(f"{'ESSID':<30} {'BSSID':<20} {'Channel':<10} {'Signal Strength (RSSI)'}")
-    print("="*80)
-    
-    for network in networks:
-        # Safely retrieve values from network dictionary
-        essid = network.get("ESSID", "N/A")
-        bssid = network.get("BSSID", "N/A")
-        channel = network.get("Channel", "N/A")
-        signal_strength = network.get("Signal Strength (RSSI)", "N/A")
-        
-        print(f"{essid:<30} {bssid:<20} {channel:<10} {signal_strength}")
+    if not networks:
+        print("No Wi-Fi networks found.")
+    else:
+        print(f"{'ESSID':<30} {'BSSID':<20} {'Channel':<10} {'Signal Strength':<15}")
+        print("-" * 75)
+        for network in networks:
+            print(f"{network['ESSID']:<30} {network['BSSID']:<20} {network['Channel']:<10} {network['SignalStrength']:<15}")
 
-# Get available networks and display them
-networks = get_available_networks()
-display_networks(networks)
+if __name__ == "__main__":
+    networks = get_wifi_networks()
+    display_networks(networks)
