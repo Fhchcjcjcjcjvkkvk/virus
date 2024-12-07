@@ -1,31 +1,37 @@
 import pyshark
 
-# Function to capture beacon frames from a pcap file
-def capture_beacon_frames(pcap_file):
-    # Create a capture object for the pcap file
-    capture = pyshark.FileCapture(pcap_file, display_filter="wlan.fc.type_subtype == 8")
-
-    # Display the details of each captured beacon frame
-    print(f"{'BSSID':<20} {'ESSID':<30} {'PWR':<6} {'CH':<4} {'ENC':<10} {'CIPHER':<6}")
-    
-    for packet in capture:
-        if hasattr(packet, "wlan"):
+# Function to display network information from capture
+def display_wifi_info(packet):
+    # Filter out packets with WLAN (Wi-Fi) protocol
+    if 'wlan' in packet:
+        try:
+            # Extract necessary information from the packet
             bssid = packet.wlan.bssid
-            essid = packet.wlan.ssid
-            # Get signal strength from the radiotap header, if available
-            try:
-                power = packet.radiotap.dbm_antsignal
-            except AttributeError:
-                power = "N/A"
+            channel = packet.wlan_channel if 'wlan_channel' in packet else 'N/A'
+            signal_strength = packet.wlan_signal_strength if 'wlan_signal_strength' in packet else 'N/A'
+            enc = packet.wlan.encryption if 'wlan.encryption' in packet else 'N/A'
+            cipher = packet.wlan.cipher if 'wlan.cipher' in packet else 'N/A'
+            essid = packet.wlan.ssid if 'wlan.ssid' in packet else 'N/A'
             
-            # Try to capture the channel and encryption type from the beacon frame
-            channel = packet.wlan_radio.channel if hasattr(packet, "wlan_radio") else "N/A"
-            encryption = packet.wlan.wep_id if hasattr(packet.wlan, "wep_id") else "Unknown"
-            
-            # Print the captured data
-            print(f"{bssid:<20} {essid:<30} {power:<6} {channel:<4} {encryption:<10} {'N/A':<6}")
+            # Print packet details (you can format this as needed)
+            print(f"BSSID: {bssid}, Channel: {channel}, Signal Strength: {signal_strength}, "
+                  f"Encryption: {enc}, Cipher: {cipher}, ESSID: {essid}")
+        except AttributeError as e:
+            pass
 
-# Main function
-if __name__ == "__main__":
-    pcap_file = r"C:\devil\cap.pcap"  # Correct file path to your PCAP
-    capture_beacon_frames(pcap_file)
+# List available interfaces
+def list_interfaces():
+    interfaces = pyshark.LiveCapture.interfaces()
+    for i, interface in enumerate(interfaces):
+        print(f"{i}: {interface}")
+
+# Select interface (manual choice)
+interface_idx = int(input("Enter the index of the interface to capture on: "))
+interface = pyshark.LiveCapture.interfaces()[interface_idx]
+
+# Start capturing packets on the selected interface
+capture = pyshark.LiveCapture(interface=interface, display_filter="wlan")
+
+# Loop through captured packets and process them
+for packet in capture.sniff_continuously():
+    display_wifi_info(packet)
