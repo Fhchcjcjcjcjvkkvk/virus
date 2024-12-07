@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define INTERFACE_INDEX 1  // Set this to the correct index for "Wi-Fi" from tshark -D
-#define COMMAND "tshark -i %d -T fields -e wlan.bssid -e wlan.ssid -e radiotap.dbm_antsignal -Y 'wlan.fc.type_subtype == 0x08'"
+#define COMMAND "tshark -i %d -T fields -e wlan.bssid -e wlan.ssid -e radiotap.dbm_antsignal -Y \"wlan.fc.type_subtype == 0x08\""
 
 // Function to run tshark command and print the output
 void capture_networks() {
