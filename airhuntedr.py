@@ -16,7 +16,7 @@ def packet_handler(pkt):
 # Function to start sniffing
 def sniff_networks():
     print("Scanning for available networks...")
-    scapy.sniff(prn=packet_handler, iface="wlan0", store=0)  # Change "wlan0" based on your network interface
+    scapy.sniff(prn=packet_handler, iface="Wi-Fi", store=0)  # Change "wlan0" based on your network interface
 
 # Start sniffing networks
 sniff_networks()
