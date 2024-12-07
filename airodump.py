@@ -1,16 +1,15 @@
 import argparse
 from scapy.all import *
 import pyshark
-import os
 import time
 
 # Funkce pro sniffování WPA handshakes na specifikovaném kanálu a BSSID pomocí Scapy
 def sniff_eapol_packets(ap_mac, channel, output_file):
     print(f"Sniffing for WPA handshakes on AP {ap_mac} (Channel {channel})...")
 
-    # Nastavení Wi-Fi adaptéru na správný kanál
-    set_channel(channel)
-    
+    # Používáme externí nástroj pro přepnutí kanálu, např. Acrylic Wi-Fi nebo Wireshark
+    # Zajistěte, že váš Wi-Fi adaptér je v monitorovacím režimu a nastavte kanál v externím nástroji
+
     # Filtr pro EAPOL pakety (EtherType 0x888e)
     bpf_filter = f"ether proto 0x888e and ether host {ap_mac}"
 
@@ -34,12 +33,6 @@ def sniff_eapol_packets(ap_mac, channel, output_file):
     
     if not handshake_found:
         print(f"No WPA handshake found for BSSID: {ap_mac}")
-
-# Funkce pro přepnutí kanálu na Windows (pomocí TShark)
-def set_channel(channel):
-    # Pokud používáte TShark a máte správně nastavený monitorovací režim, můžete použít TShark pro přepnutí kanálu
-    print(f"Switching to channel {channel}...")
-    os.system(f"tshark -i WiFi --channel {channel}")
 
 # Funkce pro analýzu zachycených paketů pomocí PyShark
 def analyze_capture_file(file_name):
