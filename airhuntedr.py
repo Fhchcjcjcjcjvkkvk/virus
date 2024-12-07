@@ -1,22 +1,28 @@
-import scapy.all as scapy
-from scapy.layers.dot11 import Dot11, Dot11Beacon
 import time
+from pywifi import PyWiFi, const, Profile
 
-# Function to handle and display information of the packets
-def packet_handler(pkt):
-    if pkt.haslayer(Dot11Beacon):  # Only capture beacon frames (AP signals)
-        # Extracting the required fields
-        ssid = pkt[Dot11Beacon].info.decode(errors="ignore")
-        bssid = pkt[Dot11].addr3
-        signal_strength = pkt.dBm_AntSignal  # Signal strength (dBm)
+# Function to scan networks and display their details
+def scan_wifi_networks():
+    wifi = PyWiFi()  # Initialize the Wi-Fi interface
+    iface = wifi.interfaces()[0]  # Use the first interface (e.g., your wireless card)
+    
+    iface.scan()  # Start scanning
+    time.sleep(2)  # Wait a few seconds for the scan to complete
+    
+    scan_results = iface.scan_results()  # Get the scan results
+    
+    if scan_results:
+        print("Available Networks:")
+        print(f"{'SSID':<30} {'BSSID':<20} {'Signal Strength (dBm)'}")
+        print("-" * 60)
+        
+        for network in scan_results:
+            ssid = network.ssid
+            bssid = network.bssid
+            signal_strength = network.signal
+            print(f"{ssid:<30} {bssid:<20} {signal_strength} dBm")
+    else:
+        print("No networks found.")
 
-        # Display the network information
-        print(f"SSID: {ssid}, BSSID: {bssid}, Signal Strength: {signal_strength} dBm")
-
-# Function to start sniffing
-def sniff_networks():
-    print("Scanning for available networks...")
-    scapy.sniff(prn=packet_handler, iface="Wi-Fi", store=0)  # Change "wlan0" based on your network interface
-
-# Start sniffing networks
-sniff_networks()
+# Run the Wi-Fi scanning function
+scan_wifi_networks()
