@@ -12,11 +12,10 @@ def sniff_eapol_packets(ap_mac, channel, output_file):
     
     # Start capturing EAPOL packets
     capture = pyshark.LiveCapture(interface=interface, bpf_filter=capture_filter)
-    
+
     # If a filename is provided, save the capture to a file
     if output_file:
         print(f"Saving capture to {output_file}...")
-        capture.set_capture_filter(capture_filter)  # Apply filter before starting capture
         capture.output_file = output_file
 
     print("Listening for EAPOL packets...")
