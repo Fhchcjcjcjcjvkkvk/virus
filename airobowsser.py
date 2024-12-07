@@ -46,4 +46,4 @@ def capture_wifi_packets(interface="Wi-Fi"):
         process_packet(pkt)
 
 if __name__ == "__main__":
-    capture_wifi_packets("Wi-Fi")  # Adjust interface name if needed
+    capture_wifi_packets("WiFi")  # Adjust interface name if needed
