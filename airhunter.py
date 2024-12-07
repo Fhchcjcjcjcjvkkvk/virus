@@ -1,22 +1,32 @@
-from scapy.all import *
 import time
-
-def packet_handler(packet):
-    if packet.haslayer(Dot11Beacon):  # Check if it's a beacon frame
-        ssid = packet[Dot11Elt].info.decode()  # SSID of the network
-        bssid = packet[Dot11].addr2  # BSSID (MAC address of AP)
-        rssi = packet.dBm_AntSignal  # Signal strength (RSSI)
-        beacon_period = packet[Dot11Beacon].beaconinterval  # Beacon period in time units
-
-        print(f"SSID: {ssid}")
-        print(f"BSSID: {bssid}")
-        print(f"RSSI: {rssi} dBm")
-        print(f"Beacon Period: {beacon_period} (time units)")
-        print("-" * 40)
+from pywifi import PyWiFi, const, Profile
 
 def scan_networks():
-    print("Starting network scan...")
-    sniff(prn=packet_handler, iface="Wi-Fi", count=100, timeout=10)
+    wifi = PyWiFi()
+    
+    # Get the first wireless interface (usually, the primary one)
+    iface = wifi.interfaces()[0]
+    
+    # Start scanning for networks
+    iface.scan()
+    
+    # Wait a few seconds for scan results to populate
+    time.sleep(2)
+    
+    # Retrieve scan results
+    scan_results = iface.scan_results()
+    
+    # Print out BSSID, ESSID, RSSI for each network found
+    print("Scanning completed, here are the networks found:")
+    print(f"{'BSSID':<20} {'ESSID':<30} {'RSSI':<5}")
+    print("-" * 55)
+    
+    for network in scan_results:
+        bssid = network.bssid
+        essid = network.ssid
+        rssi = network.signal  # RSSI value (signal strength)
+        print(f"{bssid:<20} {essid:<30} {rssi:<5} dBm")
 
 if __name__ == "__main__":
+    print("Scanning for networks...")
     scan_networks()
