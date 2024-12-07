@@ -2,7 +2,7 @@ import subprocess
 
 # Function to scan for Wi-Fi networks using 'netsh'
 def scan_wifi():
-    # Run 'netsh wlan show networks mode=bssid' to list available networks with BSSID
+    # Run 'netsh wlan show networks mode=bssid' to list available networks with BSSID and signal strength
     command = "netsh wlan show networks mode=bssid"
     result = subprocess.run(command, capture_output=True, text=True, shell=True)
     
@@ -14,7 +14,7 @@ def scan_wifi():
     # Output of the command
     output = result.stdout
     
-    # Split the output into lines and parse the ESSID and BSSID
+    # Split the output into lines and parse the ESSID, BSSID, and Signal Strength
     lines = output.splitlines()
     networks = []
     current_network = {}
@@ -30,16 +30,20 @@ def scan_wifi():
         # BSSID line
         if "BSSID" in line:
             current_network['BSSID'] = line.split(":")[1].strip()
+        
+        # Signal Strength line (RSSI)
+        if "Signal" in line:
+            current_network['Signal Strength'] = line.split(":")[1].strip()
 
     # Add the last network if present
     if current_network:
         networks.append(current_network)
 
-    # Display the networks with ESSID and BSSID
-    print(f"{'ESSID':<30} {'BSSID'}")
-    print("="*50)
+    # Display the networks with ESSID, BSSID, and Signal Strength
+    print(f"{'ESSID':<30} {'BSSID':<20} {'Signal Strength'}")
+    print("="*70)
     for network in networks:
-        print(f"{network['ESSID']:<30} {network['BSSID']}")
+        print(f"{network['ESSID']:<30} {network['BSSID']:<20} {network.get('Signal Strength', 'Not Available')}")
 
 # Call the scan_wifi function
 scan_wifi()
