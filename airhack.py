@@ -3,7 +3,7 @@ import time
 import pyshark
 from datetime import datetime
 
-# Function to capture traffic and detect WPA handshake
+# Function to capture all traffic and detect WPA handshake (EAPOL)
 def capture_traffic(bssid, interface, duration, output_file):
     print(f"Starting capture on interface: {interface}")
     print(f"Monitoring BSSID: {bssid} for {duration} seconds")
