@@ -3,6 +3,7 @@ import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
 import pyshark
+import asyncio
 
 # Function to get authentication details from netsh using ESSID
 def get_authentication(essid):
@@ -31,18 +32,20 @@ def scan_wifi():
 # Function to capture beacon frames using PyShark
 def capture_beacons(interface, capture_duration=10):
     beacon_count = {}
-    
-    # Start capturing packets
+
+    # Set up a new event loop (important to avoid asyncio errors)
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+    # Start capturing packets for beacon frames (management frames with subtype 'beacon')
     capture = pyshark.LiveCapture(interface=interface, bpf_filter="type mgt subtype beacon")
-    
-    print("Capturing beacon packets...")
-    for packet in capture.sniff_continuously(packet_count=capture_duration * 10):  # Capture for about capture_duration seconds
+    print(f"Capturing beacon packets on {interface}...")
+    for packet in capture.sniff_continuously(packet_count=capture_duration * 10):  # Capture for about 'capture_duration' seconds
         if hasattr(packet, 'wlan'):
             essid = packet.wlan.ssid if hasattr(packet.wlan, 'ssid') else "Unknown"
             if essid not in beacon_count:
                 beacon_count[essid] = 0
             beacon_count[essid] += 1
-    
+
     return beacon_count
 
 # Function to display the network details and live beacon count
@@ -50,13 +53,13 @@ def live_scan():
     # Set up Wi-Fi interface for capturing packets in monitor mode (ensure this is supported on your device)
     wifi = PyWiFi()
     iface = wifi.interfaces()[0]
-    
+
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
         print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Beacons':<10}")
         print("-" * 110)
-        
+
         # Capture beacon packets for 5 seconds
         beacon_counts = capture_beacons(iface.name, capture_duration=5)
 
