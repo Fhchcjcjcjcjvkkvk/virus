@@ -1,6 +1,7 @@
 import pyshark
 import argparse
 import time
+import sys
 
 # Function to display the banner in red
 def display_banner():
@@ -31,21 +32,27 @@ def capture_traffic(interface, bssid, output_file, timeout=120):
 
     # Start capturing traffic
     print("Capturing traffic... Press Ctrl+C to stop.")
-    for packet in capture.sniff_continuously():
-        if time.time() - start_time > timeout:
-            print("NO HANDSHAKE! Timeout reached.")
-            break
-        if 'eapol' in packet:
-            print("[ WPA HANDSHAKE FOUND ! ]")
-            found_handshake = True
-            break
     
-    # Close capture after processing
+    try:
+        for packet in capture.sniff_continuously():
+            if time.time() - start_time > timeout:
+                print("NO HANDSHAKE! Timeout reached.")
+                break
+            if 'eapol' in packet:
+                print("[ WPA HANDSHAKE FOUND ! ]")
+                found_handshake = True
+                break
+    except KeyboardInterrupt:
+        print("\nQuitting...")  # Gracefully handle Ctrl+C
+    
+    # Close capture after processing (this ensures the pcap file is saved)
     capture.close()
 
     # If handshake was not found within timeout
     if not found_handshake:
         print("NO HANDSHAKE! Timeout reached.")
+    else:
+        print("[ WPA HANDSHAKE CAPTURED ]")
 
 if __name__ == "__main__":
     # Display the banner
