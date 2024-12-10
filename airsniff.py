@@ -2,16 +2,20 @@ import pyshark
 import argparse
 import time
 
-# Banner to display when the script starts
+# Function to display the banner in red
 def display_banner():
-    banner = """
-    .               .     
+    # ANSI escape code for red color
+    red_color = '\033[91m'
+    reset_color = '\033[0m'
+    
+    banner = f"""
+    {red_color}.               .     
     .´  ·  .     .  ·  `.  
      :  :  :  (¯)  :  :  : 
      `.  ·  ` /¯\\ ´  ·  .´  
        `     /¯¯¯\\     ´   
 
-    Capturing WPA Handshake...
+    Capturing WPA Handshake...{reset_color}
     """
     print(banner)
 
