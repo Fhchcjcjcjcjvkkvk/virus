@@ -2,15 +2,12 @@ import time
 import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
-from scapy.all import sniff, Dot11, Dot11Data, Dot11WEP
+from scapy.all import sniff, ARP, IP, UDP, ICMP, Ether
 from collections import defaultdict
 import threading
 
-# Global dictionaries to track:
-# 1. data_packets_count: Number of captured data packets for each BSSID
-# 2. unique_iv_count: Set of unique IVs for WEP networks (to track IVs)
+# Global dictionary to track the number of captured packets
 data_packets_count = defaultdict(int)
-unique_iv_count = defaultdict(set)
 
 # Function to get authentication details from netsh using ESSID
 def get_authentication(essid):
@@ -34,7 +31,7 @@ def get_authentication(essid):
     return "Unknown"  # If not found, return Unknown
 
 
-# Function to scan WiFi networks
+# Function to scan WiFi networks using pywifi
 def scan_wifi():
     wifi = PyWiFi()
     iface = wifi.interfaces()[0]  # Get the first interface
@@ -44,26 +41,24 @@ def scan_wifi():
     return networks
 
 
-# Function to capture data packets and count IVs (for WEP)
+# Function to capture packets (ARP, ICMP, or any IP-based packet) on the network
 def packet_handler(pkt):
-    if pkt.haslayer(Dot11):
-        # If the packet is a data packet (Dot11Data), increment the counter
-        if pkt.haslayer(Dot11Data):
-            data_packets_count[pkt[Dot11].addr2] += 1  # Increment the data packet count for the source BSSID
-            
-            # If WEP is being used, track unique IVs (from Dot11WEP layer)
-            if pkt.haslayer(Dot11WEP):
-                iv = pkt[Dot11WEP].iv
-                unique_iv_count[pkt[Dot11].addr2].add(iv)  # Add the IV to the set for unique count
+    # If the packet is an IP packet (ARP, ICMP, etc.)
+    if pkt.haslayer(ARP):
+        data_packets_count['ARP'] += 1
+    elif pkt.haslayer(IP):
+        data_packets_count['IP'] += 1
+    elif pkt.haslayer(ICMP):
+        data_packets_count['ICMP'] += 1
+    elif pkt.haslayer(UDP):
+        data_packets_count['UDP'] += 1
 
-
-# Function to start sniffing for packets (sniffing in a separate thread)
+# Function to start sniffing packets on the interface (non-monitor mode)
 def start_sniffing():
-    # Sniff for data packets in monitor mode on the 'Wi-Fi' interface
+    # Sniff ARP, IP, ICMP, and UDP packets using scapy in non-monitor mode
     sniff(prn=packet_handler, store=0, iface="Wi-Fi", timeout=60)  # Adjust interface name if necessary
 
-
-# Function to display the network details along with data packets and IV count
+# Function to display the network details along with captured packet counts
 def live_scan():
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
@@ -79,21 +74,21 @@ def live_scan():
             # Get the authentication type using netsh for each ESSID
             auth = get_authentication(essid)
 
-            # Get the number of data packets and unique IV count for WEP networks
-            data_count = data_packets_count.get(bssid, 0)  # Get total data packets for BSSID
-            unique_iv_count_for_bssid = len(unique_iv_count.get(bssid, set()))  # Count of unique IVs for WEP
+            # Get the total packet count (ARP, IP, ICMP, UDP)
+            arp_count = data_packets_count.get('ARP', 0)
+            ip_count = data_packets_count.get('IP', 0)
+            icmp_count = data_packets_count.get('ICMP', 0)
+            udp_count = data_packets_count.get('UDP', 0)
 
-            # If the network is WEP, show unique IVs, else show data packet count
-            data_value = f"Data Packets: {data_count}, Unique IVs: {unique_iv_count_for_bssid}" if auth == "WEP" else f"Data Packets: {data_count}"
-
-            # Display the network information along with data count and IV count (for WEP)
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {data_value:<15}")
+            # Display the network information along with captured packet counts
+            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} "
+                  f"ARP: {arp_count} IP: {ip_count} ICMP: {icmp_count} UDP: {udp_count}")
 
         time.sleep(5)  # Wait for 5 seconds before the next scan
 
 
 if __name__ == "__main__":
-    # Start sniffing for data packets in a separate thread
+    # Start sniffing for packets in a separate thread
     sniff_thread = threading.Thread(target=start_sniffing, daemon=True)
     sniff_thread.start()
 
