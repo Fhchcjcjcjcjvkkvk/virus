@@ -54,8 +54,8 @@ def live_scan():
     wifi = PyWiFi()
     iface = wifi.interfaces()[0]  # Get the first interface
 
-    # Get the correct interface name for PyShark
-    iface_name = iface.name()  # Access the interface name from PyWiFi
+    # Correct interface name for PyShark (you provided "WiFi 2")
+    iface_name = "WiFi 2"  # Use the exact interface name you provided
 
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
