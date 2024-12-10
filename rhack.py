@@ -1,31 +1,31 @@
-import os
 import time
+import os
 import pywifi
-from pywifi import PyWiFi
+from pywifi import PyWiFi, const, Profile
 
-# Function to get authentication details using netsh
-def get_authentication_details():
-    # Run netsh to get details of all Wi-Fi networks
+# Function to get authentication details from netsh using ESSID
+def get_authentication(essid):
+    # Run netsh to get the available network's authentication information
     command = 'netsh wlan show networks mode=bssid'
     result = os.popen(command).read()
 
-    # Parse the output and build a dictionary mapping ESSIDs to their authentication types
-    auth_details = {}
+    # Parse the output to find the "Authentication" line for the specific ESSID
+    lines = result.split("\n")
     current_ssid = None
 
-    for line in result.split("\n"):
+    for line in lines:
         line = line.strip()
 
-        if line.startswith("SSID "):  # Found an SSID
-            current_ssid = line.split(" : ")[1].strip()
-        elif "Authentication" in line and current_ssid:
-            auth_type = line.split(" : ")[1].strip()
-            auth_details[current_ssid] = auth_type
+        if line.startswith("SSID ") and essid in line:  # Match the ESSID
+            current_ssid = essid
+        elif "Authentication" in line and current_ssid == essid:
+            # Extract and return the authentication type (e.g., WPA2, WPA3)
+            return line.split(":")[1].strip()
 
-    return auth_details
+    return "Unknown"  # If not found, return Unknown
 
 
-# Function to scan Wi-Fi networks using pywifi
+# Function to scan WiFi networks
 def scan_wifi():
     wifi = PyWiFi()
     iface = wifi.interfaces()[0]  # Assuming the first interface
@@ -35,23 +35,21 @@ def scan_wifi():
     return networks
 
 
-# Function to display live Wi-Fi network details
+# Function to display the network details
 def live_scan():
     while True:
-        networks = scan_wifi()  # Perform the Wi-Fi scan
-        auth_details = get_authentication_details()  # Fetch authentication types using netsh
-
-        os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live updates
+        networks = scan_wifi()  # Perform the WiFi scan
+        os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
         print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30}")
         print("-" * 90)
 
         for network in networks:
             bssid = network.bssid  # Access the BSSID (MAC address) directly
-            essid = network.ssid  # Access the ESSID (network name) directly
+            essid = network.ssid   # Access the ESSID (network name) directly
             signal = network.signal  # Access the signal strength directly
-            
-            # Get authentication type from the auth_details dictionary
-            auth = auth_details.get(essid, "Unknown")
+
+            # Get the authentication type using netsh for each ESSID
+            auth = get_authentication(essid)
 
             # Display the information
             print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30}")
