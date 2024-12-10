@@ -1,7 +1,6 @@
 import time
 import os
 import pywifi
-import pyshark  # PyShark to capture network packets
 from pywifi import PyWiFi, const, Profile
 
 # Function to get authentication details from netsh using ESSID
@@ -25,25 +24,26 @@ def get_authentication(essid):
 
     return "Unknown"  # If not found, return Unknown
 
-# Function to capture packets using PyShark and calculate packets per second
-def get_packets_per_second(interface, capture_duration=10):
-    print(f"Starting packet capture on interface: {interface}")
-    try:
-        capture = pyshark.LiveCapture(interface=interface)
-        capture.sniff(timeout=capture_duration)  # Capture for 10 seconds
 
-        # Count the data packets captured
-        packet_count = 0
-        for packet in capture:
-            if 'IP' in packet:  # Check if it's an IP packet (data packet)
-                packet_count += 1
-
-        # Calculate packets per second
-        packets_per_second = packet_count / capture_duration
-        return packets_per_second
-    except Exception as e:
-        print(f"Error capturing packets: {e}")
-        return 0  # If error occurs, return 0 packets per second
+# Function to get the maximum speed and explanation based on MB value
+def get_max_speed_explanation(speed_mbps):
+    # Explanation based on the speed (in Mbps)
+    if speed_mbps <= 11:
+        return f"{speed_mbps} Mbps - 802.11b"
+    elif speed_mbps <= 22:
+        return f"{speed_mbps} Mbps - 802.11b+"
+    elif speed_mbps <= 54:
+        return f"{speed_mbps} Mbps - 802.11g"
+    elif speed_mbps <= 72:
+        return f"{speed_mbps} Mbps - 802.11n"
+    elif speed_mbps <= 150:
+        return f"{speed_mbps} Mbps - 802.11n (High throughput)"
+    elif speed_mbps <= 300:
+        return f"{speed_mbps} Mbps - 802.11n (Dual Band)"
+    elif speed_mbps <= 600:
+        return f"{speed_mbps} Mbps - 802.11ac"
+    else:
+        return f"{speed_mbps} Mbps - 802.11ac (Very High throughput)"
 
 # Function to scan WiFi networks
 def scan_wifi():
@@ -54,21 +54,14 @@ def scan_wifi():
     networks = iface.scan_results()
     return networks
 
-# Function to display the network details and packet count per second
+
+# Function to display the network details
 def live_scan():
-    interface = "WiFi"  # Replace with your actual network interface name
-    print("Starting live Wi-Fi scan...")
     while True:
-        print("Scanning Wi-Fi networks...")
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
-        
-        # Get the packets per second over the last 10 seconds
-        packets_per_second = get_packets_per_second(interface)
-
-        # Display header and packet stats
-        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Packets/s':<15}")
-        print("-" * 110)
+        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Max Speed':<30}")
+        print("-" * 120)
 
         for network in networks:
             bssid = network.bssid  # Access the BSSID (MAC address) directly
@@ -77,11 +70,19 @@ def live_scan():
 
             # Get the authentication type using netsh for each ESSID
             auth = get_authentication(essid)
+            
+            # Assuming that `network` object provides the max speed, we simulate it here
+            # In a real-world case, you may want to extract this value directly from network's attributes.
+            max_speed = 54  # Placeholder for max speed (you might want to extract actual data)
+            
+            # Get the explanation for the max speed
+            max_speed_explanation = get_max_speed_explanation(max_speed)
 
             # Display the information
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {packets_per_second:<15.2f}")
+            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {max_speed_explanation:<30}")
 
         time.sleep(5)  # Wait for 5 seconds before the next scan
+
 
 if __name__ == "__main__":
     live_scan()  # Start the live scan
