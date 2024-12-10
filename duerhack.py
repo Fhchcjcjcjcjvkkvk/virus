@@ -3,11 +3,15 @@ import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
 from scapy.all import sniff, ARP, IP, UDP, ICMP, Ether
-from collections import defaultdict
+from collections import defaultdict, deque
 import threading
 
-# Global dictionary to track the number of captured packets
-data_packets_count = defaultdict(int)
+# Global dictionaries to track:
+# 1. Packet reception count (successful packets for RXQ calculation)
+# 2. Total packets in the last 10 seconds for RXQ calculation
+received_packets = defaultdict(int)
+total_packets = defaultdict(int)
+packet_timestamps = defaultdict(deque)  # Track timestamps for packet arrivals
 
 # Function to get authentication details from netsh using ESSID
 def get_authentication(essid):
@@ -43,27 +47,54 @@ def scan_wifi():
 
 # Function to capture packets (ARP, ICMP, or any IP-based packet) on the network
 def packet_handler(pkt):
-    # If the packet is an IP packet (ARP, ICMP, etc.)
+    current_time = time.time()
+
+    # If the packet is an ARP, IP, ICMP, or UDP packet, we consider it as received
     if pkt.haslayer(ARP):
-        data_packets_count['ARP'] += 1
+        received_packets['ARP'] += 1
     elif pkt.haslayer(IP):
-        data_packets_count['IP'] += 1
+        received_packets['IP'] += 1
     elif pkt.haslayer(ICMP):
-        data_packets_count['ICMP'] += 1
+        received_packets['ICMP'] += 1
     elif pkt.haslayer(UDP):
-        data_packets_count['UDP'] += 1
+        received_packets['UDP'] += 1
+
+    # Keep track of the timestamp of the current packet
+    packet_timestamps['All'].append(current_time)
+    
+    # Cleanup old packets (older than 10 seconds) for RXQ calculation
+    for key in packet_timestamps:
+        while packet_timestamps[key] and current_time - packet_timestamps[key][0] > 10:
+            packet_timestamps[key].popleft()
+
 
 # Function to start sniffing packets on the interface (non-monitor mode)
 def start_sniffing():
     # Sniff ARP, IP, ICMP, and UDP packets using scapy in non-monitor mode
     sniff(prn=packet_handler, store=0, iface="WiFi", timeout=60)  # Adjust interface name if necessary
 
-# Function to display the network details along with captured packet counts
+# Function to calculate RXQ (receive quality) as a percentage of successfully received packets
+def calculate_rxq():
+    total = sum(received_packets.values())
+    total_time = time.time()
+
+    # Count total number of received packets in the last 10 seconds
+    for key in received_packets:
+        total_packets[key] += received_packets[key]
+
+    # Calculate RXQ as percentage of successful packet reception
+    if total > 0:
+        rxq_percentage = (total / len(packet_timestamps['All'])) * 100
+        return round(rxq_percentage, 2)
+    return 0
+
+
+# Function to display the network details along with RXQ and packet counts
 def live_scan():
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
-        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Data':<15}")
+        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'RXQ %':<15}")
         print("-" * 100)
 
         for network in networks:
@@ -74,15 +105,11 @@ def live_scan():
             # Get the authentication type using netsh for each ESSID
             auth = get_authentication(essid)
 
-            # Get the total packet count (ARP, IP, ICMP, UDP)
-            arp_count = data_packets_count.get('ARP', 0)
-            ip_count = data_packets_count.get('IP', 0)
-            icmp_count = data_packets_count.get('ICMP', 0)
-            udp_count = data_packets_count.get('UDP', 0)
+            # Calculate the RXQ for the network
+            rxq = calculate_rxq()
 
-            # Display the network information along with captured packet counts
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} "
-                  f"ARP: {arp_count} IP: {ip_count} ICMP: {icmp_count} UDP: {udp_count}")
+            # Display the network information along with RXQ
+            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {rxq:<15}")
 
         time.sleep(5)  # Wait for 5 seconds before the next scan
 
