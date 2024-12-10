@@ -52,7 +52,7 @@ def packet_handler(pkt):
 # Function to start sniffing for beacons (sniffing in a separate thread)
 def start_sniffing():
     # Sniff in monitor mode (replace 'wlan0' with your interface name)
-    sniff(prn=packet_handler, store=0, iface="wlan0", timeout=60)  # Adjust interface name and timeout
+    sniff(prn=packet_handler, store=0, iface="WiFi", timeout=60)  # Adjust interface name and timeout
 
 
 # Function to display the network details along with beacon count
