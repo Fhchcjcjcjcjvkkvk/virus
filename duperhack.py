@@ -56,7 +56,7 @@ def packet_handler(pkt):
 # Function to start sniffing packets on the interface (non-monitor mode)
 def start_sniffing():
     # Sniff ARP, IP, ICMP, and UDP packets using scapy in non-monitor mode
-    sniff(prn=packet_handler, store=0, iface="Wi-Fi", timeout=60)  # Adjust interface name if necessary
+    sniff(prn=packet_handler, store=0, iface="WiFi", timeout=60)  # Adjust interface name if necessary
 
 # Function to display the network details along with captured packet counts
 def live_scan():
