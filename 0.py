@@ -52,7 +52,10 @@ def capture_beacons(interface, capture_duration=10):
 def live_scan():
     # Set up Wi-Fi interface for capturing packets in monitor mode (ensure this is supported on your device)
     wifi = PyWiFi()
-    iface = wifi.interfaces()[0]
+    iface = wifi.interfaces()[0]  # Get the first interface
+
+    # Get the correct interface name for PyShark
+    iface_name = iface.name()  # Access the interface name from PyWiFi
 
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
@@ -61,7 +64,7 @@ def live_scan():
         print("-" * 110)
 
         # Capture beacon packets for 5 seconds
-        beacon_counts = capture_beacons(iface.name, capture_duration=5)
+        beacon_counts = capture_beacons(iface_name, capture_duration=5)
 
         for network in networks:
             bssid = network.bssid
