@@ -2,6 +2,7 @@ import time
 import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
+from scapy.all import sniff, Dot11, Dot11Beacon
 
 # Function to get authentication details from netsh using ESSID
 def get_authentication(essid):
@@ -24,28 +25,7 @@ def get_authentication(essid):
 
     return "Unknown"  # If not found, return Unknown
 
-
-# Function to get the maximum speed and explanation based on MB value
-def get_max_speed_explanation(speed_mbps):
-    # Explanation based on the speed (in Mbps)
-    if speed_mbps <= 11:
-        return f"{speed_mbps} Mbps - 802.11b"
-    elif speed_mbps <= 22:
-        return f"{speed_mbps} Mbps - 802.11b+"
-    elif speed_mbps <= 54:
-        return f"{speed_mbps} Mbps - 802.11g"
-    elif speed_mbps <= 72:
-        return f"{speed_mbps} Mbps - 802.11n"
-    elif speed_mbps <= 150:
-        return f"{speed_mbps} Mbps - 802.11n (High throughput)"
-    elif speed_mbps <= 300:
-        return f"{speed_mbps} Mbps - 802.11n (Dual Band)"
-    elif speed_mbps <= 600:
-        return f"{speed_mbps} Mbps - 802.11ac"
-    else:
-        return f"{speed_mbps} Mbps - 802.11ac (Very High throughput)"
-
-# Function to scan WiFi networks
+# Function to scan WiFi networks using pywifi
 def scan_wifi():
     wifi = PyWiFi()
     iface = wifi.interfaces()[0]  # Assuming the first interface
@@ -54,14 +34,36 @@ def scan_wifi():
     networks = iface.scan_results()
     return networks
 
+# Function to sniff for beacon frames and extract channel information
+def get_channel_from_sniffed_data(packet):
+    if packet.haslayer(Dot11Beacon):
+        ssid = packet[Dot11].info.decode(errors="ignore")
+        channel = ord(packet[Dot11Elt:3].info)  # Extracting the channel from the Beacon frame
+        return ssid, channel
+    return None, None
 
-# Function to display the network details
+# Function to continuously sniff and update channel information
+def sniff_for_channels():
+    network_channels = {}
+    def handle_packet(packet):
+        ssid, channel = get_channel_from_sniffed_data(packet)
+        if ssid and channel:
+            network_channels[ssid] = channel
+
+    # Start sniffing in the background (for 30 seconds)
+    sniff(prn=handle_packet, store=0, timeout=30)  # Timeout after 30 seconds
+    return network_channels
+
+# Function to display the network details with channel info
 def live_scan():
+    # Get channel information from sniffed data
+    network_channels = sniff_for_channels()
+
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
-        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Max Speed':<30}")
-        print("-" * 120)
+        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Channel':<10}")
+        print("-" * 100)
 
         for network in networks:
             bssid = network.bssid  # Access the BSSID (MAC address) directly
@@ -70,19 +72,14 @@ def live_scan():
 
             # Get the authentication type using netsh for each ESSID
             auth = get_authentication(essid)
-            
-            # Assuming that `network` object provides the max speed, we simulate it here
-            # In a real-world case, you may want to extract this value directly from network's attributes.
-            max_speed = 54  # Placeholder for max speed (you might want to extract actual data)
-            
-            # Get the explanation for the max speed
-            max_speed_explanation = get_max_speed_explanation(max_speed)
+
+            # Get the channel from sniffed data
+            channel = network_channels.get(essid, "Unknown")
 
             # Display the information
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {max_speed_explanation:<30}")
+            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {channel:<10}")
 
         time.sleep(5)  # Wait for 5 seconds before the next scan
-
 
 if __name__ == "__main__":
     live_scan()  # Start the live scan
