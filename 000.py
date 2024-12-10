@@ -39,6 +39,8 @@ def capture_beacons(interface, capture_duration=10):
     # Start capturing packets for beacon frames (management frames with subtype 'beacon')
     capture = pyshark.LiveCapture(interface=interface, bpf_filter="type mgt subtype beacon")
     print(f"Capturing beacon packets on {interface}...")
+    
+    # Capture packets for the specified duration and count the beacons
     for packet in capture.sniff_continuously(packet_count=capture_duration * 10):  # Capture for about 'capture_duration' seconds
         if hasattr(packet, 'wlan'):
             essid = packet.wlan.ssid if hasattr(packet.wlan, 'ssid') else "Unknown"
@@ -55,7 +57,7 @@ def live_scan():
     iface = wifi.interfaces()[0]  # Get the first interface
 
     # Correct interface name for PyShark (you provided "WiFi 2")
-    iface_name = "WiFi 2"  # Use the exact interface name you provided
+    iface_name = "WiFi"  # Use the exact interface name you provided
 
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
