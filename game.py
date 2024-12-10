@@ -4,110 +4,141 @@ import random
 # Initialize pygame
 pygame.init()
 
-# Game settings
-WIDTH, HEIGHT = 600, 600
-FPS = 30
-TILE_SIZE = 30
+# Constants
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+PLAYER_WIDTH = 50
+PLAYER_HEIGHT = 50
+ENEMY_WIDTH = 50
+ENEMY_HEIGHT = 50
+BULLET_WIDTH = 5
+BULLET_HEIGHT = 10
 WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-YELLOW = (255, 255, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+FPS = 60
 
-# Setup the game screen
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Pac-Man")
+# Create screen
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Shooting Game")
 
-# Define directions
-UP = (0, -TILE_SIZE)
-DOWN = (0, TILE_SIZE)
-LEFT = (-TILE_SIZE, 0)
-RIGHT = (TILE_SIZE, 0)
+# Load player image (optional, just for visualization)
+player_img = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT))
+player_img.fill(BLUE)
 
-# Create the player class (Pac-Man)
-class PacMan:
+# Define fonts
+font = pygame.font.SysFont("Arial", 30)
+
+# Player class
+class Player(pygame.sprite.Sprite):
     def __init__(self):
-        self.x = WIDTH // 2
-        self.y = HEIGHT // 2
-        self.size = TILE_SIZE
-        self.direction = RIGHT
-        self.speed = TILE_SIZE
-
-    def move(self):
-        self.x += self.direction[0]
-        self.y += self.direction[1]
-
-    def draw(self):
-        pygame.draw.circle(screen, YELLOW, (self.x + TILE_SIZE // 2, self.y + TILE_SIZE // 2), TILE_SIZE // 2)
-
-# Create the Ghost class
-class Ghost:
-    def __init__(self, color, x, y):
-        self.x = x
-        self.y = y
-        self.size = TILE_SIZE
-        self.color = color
-        self.direction = random.choice([UP, DOWN, LEFT, RIGHT])
-
-    def move(self):
-        self.x += self.direction[0]
-        self.y += self.direction[1]
-
-    def draw(self):
-        pygame.draw.circle(screen, self.color, (self.x + TILE_SIZE // 2, self.y + TILE_SIZE // 2), TILE_SIZE // 2)
-
-# Create some walls for the maze
-def draw_walls():
-    for i in range(0, WIDTH, TILE_SIZE):
-        pygame.draw.rect(screen, BLUE, (i, 0, TILE_SIZE, TILE_SIZE))
-        pygame.draw.rect(screen, BLUE, (i, HEIGHT - TILE_SIZE, TILE_SIZE, TILE_SIZE))
-    for i in range(0, HEIGHT, TILE_SIZE):
-        pygame.draw.rect(screen, BLUE, (0, i, TILE_SIZE, TILE_SIZE))
-        pygame.draw.rect(screen, BLUE, (WIDTH - TILE_SIZE, i, TILE_SIZE, TILE_SIZE))
-
-def main():
-    clock = pygame.time.Clock()
-    pacman = PacMan()
-    ghosts = [Ghost(RED, random.randint(0, (WIDTH // TILE_SIZE) - 1) * TILE_SIZE, random.randint(0, (HEIGHT // TILE_SIZE) - 1) * TILE_SIZE) for _ in range(3)]
-
-    # Main game loop
-    running = True
-    while running:
-        clock.tick(FPS)
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-        # Get pressed keys
+        super().__init__()
+        self.image = player_img
+        self.rect = self.image.get_rect()
+        self.rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT - PLAYER_HEIGHT - 10)
+        self.speed = 5
+    
+    def update(self):
         keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] and self.rect.left > 0:
+            self.rect.x -= self.speed
+        if keys[pygame.K_RIGHT] and self.rect.right < SCREEN_WIDTH:
+            self.rect.x += self.speed
 
-        # Control Pac-Man
-        if keys[pygame.K_UP]:
-            pacman.direction = UP
-        if keys[pygame.K_DOWN]:
-            pacman.direction = DOWN
-        if keys[pygame.K_LEFT]:
-            pacman.direction = LEFT
-        if keys[pygame.K_RIGHT]:
-            pacman.direction = RIGHT
+# Bullet class
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((BULLET_WIDTH, BULLET_HEIGHT))
+        self.image.fill(RED)
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+        self.speed = 7
+    
+    def update(self):
+        self.rect.y -= self.speed
+        if self.rect.bottom < 0:
+            self.kill()
 
-        # Move pacman and ghosts
-        pacman.move()
-        for ghost in ghosts:
-            ghost.move()
+# Enemy class
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = pygame.Surface((ENEMY_WIDTH, ENEMY_HEIGHT))
+        self.image.fill(GREEN)
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randint(0, SCREEN_WIDTH - ENEMY_WIDTH)
+        self.rect.y = random.randint(-100, -40)
+        self.speed = random.randint(2, 5)
+    
+    def update(self):
+        self.rect.y += self.speed
+        if self.rect.top > SCREEN_HEIGHT:
+            self.rect.x = random.randint(0, SCREEN_WIDTH - ENEMY_WIDTH)
+            self.rect.y = random.randint(-100, -40)
 
-        # Draw everything
-        screen.fill(BLACK)
-        draw_walls()
-        pacman.draw()
-        for ghost in ghosts:
-            ghost.draw()
+# Setup sprite groups
+all_sprites = pygame.sprite.Group()
+bullets = pygame.sprite.Group()
+enemies = pygame.sprite.Group()
 
-        pygame.display.flip()
+# Create the player
+player = Player()
+all_sprites.add(player)
 
-    pygame.quit()
+# Create enemies
+for i in range(5):
+    enemy = Enemy()
+    all_sprites.add(enemy)
+    enemies.add(enemy)
 
-if __name__ == "__main__":
-    main()
+# Game loop
+running = True
+score = 0
+clock = pygame.time.Clock()
+
+while running:
+    clock.tick(FPS)
+    
+    # Event handling
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                # Create a bullet
+                bullet = Bullet(player.rect.centerx, player.rect.top)
+                all_sprites.add(bullet)
+                bullets.add(bullet)
+    
+    # Update
+    all_sprites.update()
+
+    # Check for collisions
+    for bullet in bullets:
+        enemy_hits = pygame.sprite.spritecollide(bullet, enemies, True)
+        for enemy in enemy_hits:
+            bullet.kill()
+            score += 10
+            # Add new enemy after collision
+            new_enemy = Enemy()
+            all_sprites.add(new_enemy)
+            enemies.add(new_enemy)
+    
+    # Check if enemy hits the player
+    if pygame.sprite.spritecollide(player, enemies, False):
+        running = False  # Game over
+
+    # Draw
+    screen.fill(WHITE)
+    all_sprites.draw(screen)
+
+    # Display score
+    score_text = font.render(f"Score: {score}", True, (0, 0, 0))
+    screen.blit(score_text, (10, 10))
+
+    # Update screen
+    pygame.display.flip()
+
+pygame.quit()
