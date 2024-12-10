@@ -3,14 +3,11 @@ import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
 import pyshark
-from collections import defaultdict, deque
+from collections import defaultdict
 import threading
 
-# Global dictionaries to track:
-# 1. Packet reception count (successful packets for RXQ calculation)
-# 2. Total packets in the last 10 seconds for RXQ calculation
-received_packets = defaultdict(int)
-packet_timestamps = defaultdict(deque)  # Track timestamps for packet arrivals
+# Global dictionary to track beacon frame counts
+beacon_counts = defaultdict(int)
 
 # Function to get authentication details from netsh using ESSID
 def get_authentication(essid):
@@ -44,28 +41,12 @@ def scan_wifi():
     return networks
 
 
-# Function to capture packets (ARP, IP, ICMP, or any IP-based packet) using pyshark
+# Function to capture Beacon frames using pyshark
 def packet_handler(pkt):
-    current_time = time.time()
-
-    # If the packet is ARP, IP, ICMP, or UDP, we consider it as successfully received
-    if 'ARP' in pkt:
-        received_packets['ARP'] += 1
-    elif 'IP' in pkt:
-        received_packets['IP'] += 1
-    elif 'ICMP' in pkt:
-        received_packets['ICMP'] += 1
-    elif 'UDP' in pkt:
-        received_packets['UDP'] += 1
-
-    # Keep track of the timestamp of the current packet
-    packet_timestamps['All'].append(current_time)
-    
-    # Cleanup old packets (older than 10 seconds) for RXQ calculation
-    for key in packet_timestamps:
-        while packet_timestamps[key] and current_time - packet_timestamps[key][0] > 10:
-            packet_timestamps[key].popleft()
-
+    # Check if the packet is a Beacon frame (management frame type)
+    if 'beacon' in pkt:
+        essid = pkt.wlan.ssid  # Extract ESSID from the Beacon frame
+        beacon_counts[essid] += 1  # Increment the count for this ESSID
 
 # Function to start sniffing packets using pyshark (in normal mode)
 def start_sniffing():
@@ -74,30 +55,12 @@ def start_sniffing():
         packet_handler(pkt)  # Process the packet
 
 
-# Function to calculate RXQ (receive quality) as a percentage of successfully received packets
-def calculate_rxq():
-    total = sum(received_packets.values())
-    total_time = time.time()
-
-    # Count total number of received packets in the last 10 seconds
-    # Cleanup old packets (older than 10 seconds)
-    for key in received_packets:
-        while packet_timestamps[key] and total_time - packet_timestamps[key][0] > 10:
-            packet_timestamps[key].popleft()
-
-    # Calculate RXQ as the percentage of successfully received packets
-    if total > 0:
-        rxq_percentage = (total / len(packet_timestamps['All'])) * 100
-        return round(rxq_percentage, 2)
-    return 0
-
-
-# Function to display the network details along with RXQ and packet counts
+# Function to display the network details along with Beacon count
 def live_scan():
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
-        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'RXQ %':<15}")
+        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Beacons':<10}")
         print("-" * 100)
 
         for network in networks:
@@ -108,11 +71,11 @@ def live_scan():
             # Get the authentication type using netsh for each ESSID
             auth = get_authentication(essid)
 
-            # Calculate the RXQ for the network
-            rxq = calculate_rxq()
+            # Get the beacon count for the ESSID
+            beacon_count = beacon_counts.get(essid, 0)
 
-            # Display the network information along with RXQ
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {rxq:<15}")
+            # Display the network information along with the Beacon count
+            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {beacon_count:<10}")
 
         time.sleep(5)  # Wait for 5 seconds before the next scan
 
