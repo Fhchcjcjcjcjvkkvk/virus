@@ -2,6 +2,7 @@ import time
 import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
+from scapy.all import *
 
 # Function to get authentication details from netsh using ESSID
 def get_authentication(essid):
@@ -25,13 +26,21 @@ def get_authentication(essid):
     return "Unknown"  # If not found, return Unknown
 
 
-# Function to scan WiFi networks
+# Function to scan WiFi networks using Scapy to capture BSSID
 def scan_wifi():
-    wifi = PyWiFi()
-    iface = wifi.interfaces()[0]  # Assuming the first interface
-    iface.scan()
-    time.sleep(2)  # Wait for scan results to populate
-    networks = iface.scan_results()
+    networks = set()  # Using a set to avoid duplicates
+
+    def packet_handler(pkt):
+        if pkt.haslayer(Dot11):
+            # Capture only Beacon frames or Probe Response frames
+            if pkt.type == 0 and pkt.subtype == 8:  # Beacon frame
+                bssid = pkt.addr3  # BSSID is in the addr3 field for Beacon frames
+                essid = pkt.info.decode() if pkt.info else "Hidden"
+                networks.add((bssid, essid))
+
+    # Start sniffing for 10 seconds to capture networks
+    sniff(prn=packet_handler, timeout=10)
+
     return networks
 
 
@@ -43,12 +52,8 @@ def live_scan():
         print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30}")
         print("-" * 90)
 
-        for network in networks:
-            bssid = network.bssid  # Access the BSSID (MAC address) directly
-            essid = network.ssid   # Access the ESSID (network name) directly
-            signal = network.signal  # Access the signal strength directly
-
-            # Get the authentication type using netsh for each ESSID
+        for bssid, essid in networks:
+            signal = "N/A"  # Signal strength is not captured in Scapy sniffing directly
             auth = get_authentication(essid)
 
             # Display the information
