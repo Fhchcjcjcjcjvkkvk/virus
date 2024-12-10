@@ -27,18 +27,23 @@ def get_authentication(essid):
 
 # Function to capture packets using PyShark and calculate packets per second
 def get_packets_per_second(interface, capture_duration=10):
-    capture = pyshark.LiveCapture(interface=interface)
-    capture.sniff(timeout=capture_duration)  # Capture for 10 seconds
+    print(f"Starting packet capture on interface: {interface}")
+    try:
+        capture = pyshark.LiveCapture(interface=interface)
+        capture.sniff(timeout=capture_duration)  # Capture for 10 seconds
 
-    # Count the data packets captured
-    packet_count = 0
-    for packet in capture:
-        if 'IP' in packet:  # Check if it's an IP packet (data packet)
-            packet_count += 1
+        # Count the data packets captured
+        packet_count = 0
+        for packet in capture:
+            if 'IP' in packet:  # Check if it's an IP packet (data packet)
+                packet_count += 1
 
-    # Calculate packets per second
-    packets_per_second = packet_count / capture_duration
-    return packets_per_second
+        # Calculate packets per second
+        packets_per_second = packet_count / capture_duration
+        return packets_per_second
+    except Exception as e:
+        print(f"Error capturing packets: {e}")
+        return 0  # If error occurs, return 0 packets per second
 
 # Function to scan WiFi networks
 def scan_wifi():
@@ -52,7 +57,9 @@ def scan_wifi():
 # Function to display the network details and packet count per second
 def live_scan():
     interface = "WiFi"  # Replace with your actual network interface name
+    print("Starting live Wi-Fi scan...")
     while True:
+        print("Scanning Wi-Fi networks...")
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
         
@@ -60,7 +67,7 @@ def live_scan():
         packets_per_second = get_packets_per_second(interface)
 
         # Display header and packet stats
-        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'#/s':<15}")
+        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Packets/s':<15}")
         print("-" * 110)
 
         for network in networks:
