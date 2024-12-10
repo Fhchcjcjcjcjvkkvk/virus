@@ -36,8 +36,14 @@ def scan_wifi():
     wifi = PyWiFi()
     iface = wifi.interfaces()[0]  # Get the first interface
     iface.scan()
-    time.sleep(2)  # Wait for scan results to populate
+    
+    # Wait for a while to allow scan results to populate
+    # We don't rely on sleep; instead, we check if results are available
     networks = iface.scan_results()
+    while not networks:  # If the results are empty, wait and try again
+        time.sleep(1)
+        networks = iface.scan_results()
+
     return networks
 
 
@@ -50,7 +56,7 @@ def packet_handler(pkt):
 
 # Function to start sniffing packets using pyshark (in normal mode)
 def start_sniffing():
-    cap = pyshark.LiveCapture(interface="WiFi", only_syntax=True)  # Replace 'Wi-Fi' with your network interface name
+    cap = pyshark.LiveCapture(interface="WiFi")  # Replace 'Wi-Fi' with your network interface name
     for pkt in cap.sniff_continuously(packet_count=1000):  # Capture packets continuously
         packet_handler(pkt)  # Process the packet
 
