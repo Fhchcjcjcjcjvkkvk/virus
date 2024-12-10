@@ -2,7 +2,7 @@ import time
 import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
-from scapy.all import sniff, ARP, IP, UDP, ICMP, Ether
+import pyshark
 from collections import defaultdict, deque
 import threading
 
@@ -10,7 +10,6 @@ import threading
 # 1. Packet reception count (successful packets for RXQ calculation)
 # 2. Total packets in the last 10 seconds for RXQ calculation
 received_packets = defaultdict(int)
-total_packets = defaultdict(int)
 packet_timestamps = defaultdict(deque)  # Track timestamps for packet arrivals
 
 # Function to get authentication details from netsh using ESSID
@@ -45,18 +44,18 @@ def scan_wifi():
     return networks
 
 
-# Function to capture packets (ARP, ICMP, or any IP-based packet) on the network
+# Function to capture packets (ARP, IP, ICMP, or any IP-based packet) using pyshark
 def packet_handler(pkt):
     current_time = time.time()
 
-    # If the packet is an ARP, IP, ICMP, or UDP packet, we consider it as received
-    if pkt.haslayer(ARP):
+    # If the packet is ARP, IP, ICMP, or UDP, we consider it as successfully received
+    if 'ARP' in pkt:
         received_packets['ARP'] += 1
-    elif pkt.haslayer(IP):
+    elif 'IP' in pkt:
         received_packets['IP'] += 1
-    elif pkt.haslayer(ICMP):
+    elif 'ICMP' in pkt:
         received_packets['ICMP'] += 1
-    elif pkt.haslayer(UDP):
+    elif 'UDP' in pkt:
         received_packets['UDP'] += 1
 
     # Keep track of the timestamp of the current packet
@@ -68,10 +67,12 @@ def packet_handler(pkt):
             packet_timestamps[key].popleft()
 
 
-# Function to start sniffing packets on the interface (non-monitor mode)
+# Function to start sniffing packets using pyshark (in normal mode)
 def start_sniffing():
-    # Sniff ARP, IP, ICMP, and UDP packets using scapy in non-monitor mode
-    sniff(prn=packet_handler, store=0, iface="WiFi", timeout=60)  # Adjust interface name if necessary
+    cap = pyshark.LiveCapture(interface="WiFi", only_syntax=True)  # Replace 'Wi-Fi' with your network interface name
+    for pkt in cap.sniff_continuously(packet_count=1000):  # Capture packets continuously
+        packet_handler(pkt)  # Process the packet
+
 
 # Function to calculate RXQ (receive quality) as a percentage of successfully received packets
 def calculate_rxq():
@@ -79,10 +80,12 @@ def calculate_rxq():
     total_time = time.time()
 
     # Count total number of received packets in the last 10 seconds
+    # Cleanup old packets (older than 10 seconds)
     for key in received_packets:
-        total_packets[key] += received_packets[key]
+        while packet_timestamps[key] and total_time - packet_timestamps[key][0] > 10:
+            packet_timestamps[key].popleft()
 
-    # Calculate RXQ as percentage of successful packet reception
+    # Calculate RXQ as the percentage of successfully received packets
     if total > 0:
         rxq_percentage = (total / len(packet_timestamps['All'])) * 100
         return round(rxq_percentage, 2)
@@ -115,7 +118,7 @@ def live_scan():
 
 
 if __name__ == "__main__":
-    # Start sniffing for packets in a separate thread
+    # Start sniffing for packets in a separate thread using pyshark
     sniff_thread = threading.Thread(target=start_sniffing, daemon=True)
     sniff_thread.start()
 
