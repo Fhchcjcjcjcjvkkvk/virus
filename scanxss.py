@@ -34,7 +34,7 @@ def get_all_forms(url):
     """Given a `url`, it returns all forms from the HTML content"""
     try:
         # Using BeautifulSoup to parse HTML content of the URL
-        soup = bs(requests.get(url).content, "html.parser")
+        soup = bs(requests.get(url, verify=False).content, "html.parser")  # Ignore SSL cert verification
         # Finding all form elements in the HTML
         return soup.find_all("form")
     except requests.exceptions.RequestException as e:
@@ -81,9 +81,9 @@ def submit_form(form_details, url, value):
     try:
         # Making the HTTP request based on the form method (POST or GET)
         if form_details["method"] == "post":
-            return requests.post(target_url, data=data)
+            return requests.post(target_url, data=data, verify=False)  # Ignore SSL cert verification
         else:
-            return requests.get(target_url, params=data)
+            return requests.get(target_url, params=data, verify=False)  # Ignore SSL cert verification
     except requests.exceptions.RequestException as e:
         # Handling exceptions if there's an error in form submission
         print(f"[-] Error submitting form to {target_url}: {e}")
@@ -95,7 +95,7 @@ def get_all_links(url):
     """
     try:
         # Using BeautifulSoup to parse HTML content of the URL
-        soup = bs(requests.get(url).content, "html.parser")
+        soup = bs(requests.get(url, verify=False).content, "html.parser")  # Ignore SSL cert verification
         # Finding all anchor elements in the HTML
         return [urljoin(url, link.get("href")) for link in soup.find_all("a")]
     except requests.exceptions.RequestException as e:
