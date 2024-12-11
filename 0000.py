@@ -1,85 +1,52 @@
-import time
-import os
-import pywifi
-from pywifi import PyWiFi, const, Profile
-from scapy.all import sniff, Dot11, Dot11Beacon
+import tkinter as tk
+from scapy.all import *
+from collections import defaultdict
+import threading
 
-# Function to get authentication details from netsh using ESSID
-def get_authentication(essid):
-    # Run netsh to get the available network's authentication information
-    command = 'netsh wlan show networks mode=bssid'
-    result = os.popen(command).read()
+# Dictionary to hold information about networks and the number of beacons
+network_data = defaultdict(lambda: {'beacons': 0, 'essid': None})
 
-    # Parse the output to find the "Authentication" line for the specific ESSID
-    lines = result.split("\n")
-    current_ssid = None
+# Function to handle sniffing and extracting beacon packets
+def packet_handler(pkt):
+    if pkt.haslayer(Dot11Beacon):  # Check if the packet is a Beacon
+        # Extracting ESSID
+        essid = pkt[Dot11Elt].info.decode(errors='ignore')
+        # Extracting the BSSID (AP MAC address)
+        bssid = pkt[Dot11].addr3
+        
+        # Update network_data
+        if essid:
+            network_data[bssid]['essid'] = essid
+            network_data[bssid]['beacons'] += 1
 
-    for line in lines:
-        line = line.strip()
+# Function to continuously sniff packets
+def sniff_packets():
+    sniff(prn=packet_handler, iface="WiFi", store=0, timeout=60)
 
-        if line.startswith("SSID ") and essid in line:  # Match the ESSID
-            current_ssid = essid
-        elif "Authentication" in line and current_ssid == essid:
-            # Extract and return the authentication type (e.g., WPA2, WPA3)
-            return line.split(":")[1].strip()
+# Function to update the GUI with the latest data
+def update_gui():
+    for bssid, data in network_data.items():
+        essid = data['essid']
+        beacons = data['beacons']
+        network_listbox.insert(tk.END, f"BSSID: {bssid} | ESSID: {essid} | Beacons: {beacons}")
+    # Update the GUI every 5 seconds to refresh the list
+    root.after(5000, update_gui)
 
-    return "Unknown"  # If not found, return Unknown
+# Create the GUI window
+root = tk.Tk()
+root.title("WiFi Networks with Beacon Information")
 
-# Function to scan WiFi networks using pywifi
-def scan_wifi():
-    wifi = PyWiFi()
-    iface = wifi.interfaces()[0]  # Assuming the first interface
-    iface.scan()
-    time.sleep(2)  # Wait for scan results to populate
-    networks = iface.scan_results()
-    return networks
+# Create a listbox to show the Wi-Fi networks and beacons
+network_listbox = tk.Listbox(root, width=50, height=20)
+network_listbox.pack(pady=20)
 
-# Function to sniff for beacon frames and extract channel information
-def get_channel_from_sniffed_data(packet):
-    if packet.haslayer(Dot11Beacon):
-        ssid = packet[Dot11].info.decode(errors="ignore")
-        channel = ord(packet[Dot11Elt:3].info)  # Extracting the channel from the Beacon frame
-        return ssid, channel
-    return None, None
+# Start sniffing packets in a separate thread
+sniffer_thread = threading.Thread(target=sniff_packets)
+sniffer_thread.daemon = True
+sniffer_thread.start()
 
-# Function to continuously sniff and update channel information
-def sniff_for_channels():
-    network_channels = {}
-    def handle_packet(packet):
-        ssid, channel = get_channel_from_sniffed_data(packet)
-        if ssid and channel:
-            network_channels[ssid] = channel
+# Start updating the GUI
+update_gui()
 
-    # Start sniffing in the background (for 30 seconds)
-    sniff(prn=handle_packet, store=0, timeout=30)  # Timeout after 30 seconds
-    return network_channels
-
-# Function to display the network details with channel info
-def live_scan():
-    # Get channel information from sniffed data
-    network_channels = sniff_for_channels()
-
-    while True:
-        networks = scan_wifi()  # Perform the WiFi scan
-        os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
-        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Channel':<10}")
-        print("-" * 100)
-
-        for network in networks:
-            bssid = network.bssid  # Access the BSSID (MAC address) directly
-            essid = network.ssid   # Access the ESSID (network name) directly
-            signal = network.signal  # Access the signal strength directly
-
-            # Get the authentication type using netsh for each ESSID
-            auth = get_authentication(essid)
-
-            # Get the channel from sniffed data
-            channel = network_channels.get(essid, "Unknown")
-
-            # Display the information
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {channel:<10}")
-
-        time.sleep(5)  # Wait for 5 seconds before the next scan
-
-if __name__ == "__main__":
-    live_scan()  # Start the live scan
+# Run the GUI event loop
+root.mainloop()
