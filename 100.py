@@ -46,6 +46,8 @@ def scan_wifi():
 
 # Function to display the network details
 def live_scan():
+    network_details = {}  # Store network details (ESSID as key, auth and channel as values)
+    
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
@@ -57,8 +59,12 @@ def live_scan():
             essid = network.ssid   # Access the ESSID (network name) directly
             signal = network.signal  # Access the signal strength directly
 
-            # Get the authentication type and channel using netsh for each ESSID
-            auth, channel = get_authentication_and_channel(essid)
+            # Check if the ESSID is already in the dictionary, otherwise, get details from netsh
+            if essid not in network_details:
+                auth, channel = get_authentication_and_channel(essid)
+                network_details[essid] = (auth, channel)  # Store the details in the dictionary
+            else:
+                auth, channel = network_details[essid]  # Retrieve the stored details
 
             # Display the information
             print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {channel:<10}")
