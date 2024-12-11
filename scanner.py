@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup as bs
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote
 from pprint import pprint
 import argparse
 
@@ -65,15 +65,19 @@ def is_vulnerable(response):
 def scan_sql_injection(url):
     # Test on URL
     for c in "\"'":
-        # Add quote/double quote character to the URL
-        new_url = f"{url}{c}"
+        # URL encode the quote character
+        new_url = f"{url}{quote(c)}"  # Ensure proper encoding
         print("[!] Trying", new_url)
         # Make the HTTP request
-        res = s.get(new_url)
-        if is_vulnerable(res):
-            # SQL Injection detected on the URL itself, no need to proceed for extracting forms
-            print("[+] SQL Injection vulnerability detected, link:", new_url)
-            return
+        try:
+            res = s.get(new_url)
+            if is_vulnerable(res):
+                # SQL Injection detected on the URL itself, no need to proceed for extracting forms
+                print("[+] SQL Injection vulnerability detected, link:", new_url)
+                return
+        except requests.exceptions.RequestException as e:
+            print(f"[-] Error with URL {new_url}: {e}")
+            continue
 
     # Test on HTML forms
     forms = get_all_forms(url)
@@ -92,15 +96,23 @@ def scan_sql_injection(url):
                         pass
                 elif input_tag["type"] != "submit":
                     # All others except submit, use some junk data with special character
-                    data[input_tag["name"]] = f"test{c}"
-            
+                    data[input_tag["name"]] = f"test{quote(c)}"  # Ensure proper encoding
+
             # Join the URL with the action (form request URL)
             action_url = urljoin(url, form_details["action"])  # Use `action_url` instead of overwriting `url`
 
             if form_details["method"] == "post":
-                res = s.post(action_url, data=data)
+                try:
+                    res = s.post(action_url, data=data)
+                except requests.exceptions.RequestException as e:
+                    print(f"[-] Error with POST request to {action_url}: {e}")
+                    continue
             elif form_details["method"] == "get":
-                res = s.get(action_url, params=data)
+                try:
+                    res = s.get(action_url, params=data)
+                except requests.exceptions.RequestException as e:
+                    print(f"[-] Error with GET request to {action_url}: {e}")
+                    continue
 
             # Test whether the resulting page is vulnerable
             if is_vulnerable(res):
