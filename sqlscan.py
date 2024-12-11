@@ -1,108 +1,117 @@
 import requests
 from bs4 import BeautifulSoup as bs
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 from pprint import pprint
-import argparse
+import argparse  # Import argparse to handle command-line arguments
 
+# Initialize an HTTP session & set the browser
 s = requests.Session()
 s.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36"
 
 def get_all_forms(url):
+    """Given a `url`, it returns all forms from the HTML content"""
     soup = bs(s.get(url).content, "html.parser")
     return soup.find_all("form")
 
+
 def get_form_details(form):
+    """
+    This function extracts all possible useful information about an HTML `form`
+    """
     details = {}
+    # get the form action (target url)
     action = form.attrs.get("action", "").lower()
+    # get the form method (POST, GET, etc.)
     method = form.attrs.get("method", "get").lower()
+    # get all the input details such as type and name
     inputs = []
     for input_tag in form.find_all("input"):
         input_type = input_tag.attrs.get("type", "text")
         input_name = input_tag.attrs.get("name")
         input_value = input_tag.attrs.get("value", "")
         inputs.append({"type": input_type, "name": input_name, "value": input_value})
+    # put everything to the resulting dictionary
     details["action"] = action
     details["method"] = method
     details["inputs"] = inputs
     return details
 
+
 def is_vulnerable(response):
+    """A simple boolean function that determines whether a page 
+    is SQL Injection vulnerable from its `response`"""
     errors = {
+        # MySQL
         "you have an error in your sql syntax;",
         "warning: mysql",
+        # SQL Server
         "unclosed quotation mark after the character string",
+        # Oracle
         "quoted string not properly terminated",
     }
     for error in errors:
+        # if you find one of these errors, return True
         if error in response.content.decode().lower():
             return True
+    # no error detected
     return False
 
-def is_valid_url(url):
-    parsed = urlparse(url)
-    return bool(parsed.scheme) and bool(parsed.netloc)
 
 def scan_sql_injection(url):
-    if not is_valid_url(url):
-        print(f"[!] Invalid URL: {url}. Please ensure it includes the scheme (http:// or https://).")
-        return
-
-    # Test by appending SQL injection characters to the URL
+    # test on URL
     for c in "\"'":
+        # add quote/double quote character to the URL
         new_url = f"{url}{c}"
-        if not is_valid_url(new_url):  # Check if the new URL is valid after appending
-            print(f"[!] Skipping invalid URL: {new_url}")
-            continue
         print("[!] Trying", new_url)
-        try:
-            res = s.get(new_url)
-            if is_vulnerable(res):
-                print("[+] SQL Injection vulnerability detected, link:", new_url)
-                return
-        except requests.exceptions.RequestException as e:
-            print(f"[!] Error trying URL {new_url}: {e}")
-            continue
+        # make the HTTP request
+        res = s.get(new_url)
+        if is_vulnerable(res):
+            # SQL Injection detected on the URL itself, 
+            # no need to proceed for extracting forms and submitting them
+            print("[+] SQL Injection vulnerability detected, link:", new_url)
+            return
 
-    # Scan forms on the page
+    # test on HTML forms
     forms = get_all_forms(url)
     print(f"[+] Detected {len(forms)} forms on {url}.")
     for form in forms:
         form_details = get_form_details(form)
         for c in "\"'":
+            # the data body we want to submit
             data = {}
             for input_tag in form_details["inputs"]:
                 if input_tag["type"] == "hidden" or input_tag["value"]:
+                    # any input form that is hidden or has some value,
+                    # just use it in the form body
                     data[input_tag["name"]] = input_tag["value"] + c if input_tag["value"] else c
                 elif input_tag["type"] != "submit":
+                    # all others except submit, use some junk data with special character
                     data[input_tag["name"]] = f"test{c}"
-
+            # join the url with the action (form request URL)
             form_url = urljoin(url, form_details["action"])
-            if not is_valid_url(form_url):  # Check if the form URL is valid
-                print(f"[!] Skipping invalid form URL: {form_url}")
-                continue
-            try:
-                if form_details["method"] == "post":
-                    res = s.post(form_url, data=data)
-                elif form_details["method"] == "get":
-                    res = s.get(form_url, params=data)
-                
-                if is_vulnerable(res):
-                    print("[+] SQL Injection vulnerability detected, link:", form_url)
-                    print("[+] Form:")
-                    pprint(form_details)
-                    break
-            except requests.exceptions.RequestException as e:
-                print(f"[!] Error trying form URL {form_url}: {e}")
-                continue
+            if form_details["method"] == "post":
+                res = s.post(form_url, data=data)
+            elif form_details["method"] == "get":
+                res = s.get(form_url, params=data)
+            # test whether the resulting page is vulnerable
+            if is_vulnerable(res):
+                print("[+] SQL Injection vulnerability detected, link:", form_url)
+                print("[+] Form:")
+                pprint(form_details)
+                break
+
 
 def main():
-    parser = argparse.ArgumentParser(description="SQL Injection vulnerability scanner")
-    parser.add_argument("-u", "--url", type=str, required=True, help="Target URL to scan")
+    # Create an argument parser
+    parser = argparse.ArgumentParser(description="SQL Injection Scanner")
+    # Add a URL argument with a short flag -u and a long flag --url
+    parser.add_argument("-u", "--url", type=str, required=True, help="Target URL for SQL injection scanning")
+    # Parse the arguments
     args = parser.parse_args()
+    
+    # Scan the provided URL for SQL injection
+    scan_sql_injection(args.url)
 
-    url = args.url
-    print(f"Scanning URL: {url}")
-    scan_sql_injection(url)
 
 if __name__ == "__main__":
     main()
