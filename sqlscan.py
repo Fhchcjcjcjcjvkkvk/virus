@@ -47,16 +47,23 @@ def scan_sql_injection(url):
         print(f"[!] Invalid URL: {url}. Please ensure it includes the scheme (http:// or https://).")
         return
 
+    # Test by appending SQL injection characters to the URL
     for c in "\"'":
         new_url = f"{url}{c}"
-        if not is_valid_url(new_url):  # Check if the new URL is valid
+        if not is_valid_url(new_url):  # Check if the new URL is valid after appending
+            print(f"[!] Skipping invalid URL: {new_url}")
             continue
         print("[!] Trying", new_url)
-        res = s.get(new_url)
-        if is_vulnerable(res):
-            print("[+] SQL Injection vulnerability detected, link:", new_url)
-            return
+        try:
+            res = s.get(new_url)
+            if is_vulnerable(res):
+                print("[+] SQL Injection vulnerability detected, link:", new_url)
+                return
+        except requests.exceptions.RequestException as e:
+            print(f"[!] Error trying URL {new_url}: {e}")
+            continue
 
+    # Scan forms on the page
     forms = get_all_forms(url)
     print(f"[+] Detected {len(forms)} forms on {url}.")
     for form in forms:
@@ -71,17 +78,22 @@ def scan_sql_injection(url):
 
             form_url = urljoin(url, form_details["action"])
             if not is_valid_url(form_url):  # Check if the form URL is valid
+                print(f"[!] Skipping invalid form URL: {form_url}")
                 continue
-            if form_details["method"] == "post":
-                res = s.post(form_url, data=data)
-            elif form_details["method"] == "get":
-                res = s.get(form_url, params=data)
-            
-            if is_vulnerable(res):
-                print("[+] SQL Injection vulnerability detected, link:", form_url)
-                print("[+] Form:")
-                pprint(form_details)
-                break
+            try:
+                if form_details["method"] == "post":
+                    res = s.post(form_url, data=data)
+                elif form_details["method"] == "get":
+                    res = s.get(form_url, params=data)
+                
+                if is_vulnerable(res):
+                    print("[+] SQL Injection vulnerability detected, link:", form_url)
+                    print("[+] Form:")
+                    pprint(form_details)
+                    break
+            except requests.exceptions.RequestException as e:
+                print(f"[!] Error trying form URL {form_url}: {e}")
+                continue
 
 def main():
     parser = argparse.ArgumentParser(description="SQL Injection vulnerability scanner")
