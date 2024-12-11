@@ -1,86 +1,45 @@
-#include <windows.h>
-#include <wlanapi.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+import zipfile
+import argparse
+from tqdm import tqdm
 
-#pragma comment(lib, "wlanapi.lib")
-#pragma comment(lib, "ole32.lib")
+# Set up argument parsing for command-line usage
+def parse_args():
+    parser = argparse.ArgumentParser(description="Crack the password of a ZIP file using a wordlist.")
+    parser.add_argument("zip_file", help="Path to the ZIP file to crack.")
+    parser.add_argument("wordlist", help="Path to the wordlist (password list) file.")
+    return parser.parse_args()
 
-void PrintNetworkInfo(WLAN_AVAILABLE_NETWORK* network) {
-    // Convert the BSSID to a readable format
-    char bssid[18];
-    snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
-             network->bssid[0], network->bssid[1], network->bssid[2],
-             network->bssid[3], network->bssid[4], network->bssid[5]);
+# Main function to crack the ZIP file password
+def crack_zip_password(zip_file_path, wordlist_path):
+    try:
+        # Initialize the ZipFile object
+        zip_file = zipfile.ZipFile(zip_file_path)
+        
+        # Count the number of words in the wordlist
+        with open(wordlist_path, "r") as f:
+            n_words = len(f.readlines())
 
-    // Convert the ESSID to a string
-    char essid[33];
-    snprintf(essid, sizeof(essid), "%.*s", network->ssidLength, network->ssid);
+        # Print the total number of passwords to try
+        print("Total passwords to test:", n_words)
 
-    // Display the network information
-    printf("ESSID: %s\n", essid);
-    printf("BSSID: %s\n", bssid);
-    printf("RSSI: %d dBm\n", network->rssi);
-    printf("Signal Quality: %d%%\n", network->signalQuality);
-    printf("----------------------------------------------------\n");
-}
+        # Try each word in the wordlist
+        with open(wordlist_path, "r") as wordlist:
+            for word in tqdm(wordlist, total=n_words, unit="word"):
+                try:
+                    # Attempt to extract with the current word as the password
+                    zip_file.extractall(pwd=word.strip().encode())
+                except:
+                    continue
+                else:
+                    print("[+]KEY FOUND!:", word.strip())
+                    return  # Exit the function once the password is found
+        print("[!] Password not found, try other wordlist.")
+    except Exception as e:
+        print(f"[!] Error: {e}")
 
-int main() {
-    HANDLE hClient = NULL;
-    DWORD dwVersion = 0;
+if __name__ == "__main__":
+    # Parse the arguments from the command line
+    args = parse_args()
 
-    // Initialize WLAN API
-    if (WlanOpenHandle(2, NULL, &dwVersion, &hClient) != ERROR_SUCCESS) {
-        printf("Error: Unable to open WLAN handle\n");
-        return 1;
-    }
-
-    // Enumerate wireless interfaces
-    PWLAN_INTERFACE_INFO_LIST pIfList = NULL;
-    if (WlanEnumInterfaces(hClient, NULL, &pIfList) != ERROR_SUCCESS) {
-        printf("Error: Unable to enumerate interfaces\n");
-        WlanCloseHandle(hClient, NULL);
-        return 1;
-    }
-
-    if (pIfList->dwNumberOfItems == 0) {
-        printf("No wireless interfaces found.\n");
-        WlanFreeMemory(pIfList);
-        WlanCloseHandle(hClient, NULL);
-        return 1;
-    }
-
-    // Scan for networks
-    PWLAN_AVAILABLE_NETWORK_LIST pNetworkList = NULL;
-    for (DWORD i = 0; i < pIfList->dwNumberOfItems; i++) {
-        WLAN_INTERFACE_INFO interfaceInfo = pIfList->InterfaceInfo[i];
-        printf("Scanning on interface: %ws\n", interfaceInfo.strInterfaceDescription);
-
-        if (WlanScan(hClient, &interfaceInfo.InterfaceGuid, NULL, NULL, NULL) != ERROR_SUCCESS) {
-            printf("Error: Unable to scan on interface %ws\n", interfaceInfo.strInterfaceDescription);
-            continue;
-        }
-
-        // Wait for the scan to complete
-        Sleep(2000);
-
-        // Get scan results
-        if (WlanGetAvailableNetworkList(hClient, &interfaceInfo.InterfaceGuid, 0, NULL, &pNetworkList) != ERROR_SUCCESS) {
-            printf("Error: Unable to get network list\n");
-            continue;
-        }
-
-        // Print available networks information
-        for (DWORD j = 0; j < pNetworkList->dwNumberOfItems; j++) {
-            PrintNetworkInfo(&pNetworkList->Network[j]);
-        }
-
-        WlanFreeMemory(pNetworkList);
-    }
-
-    WlanFreeMemory(pIfList);
-    WlanCloseHandle(hClient, NULL);
-
-    return 0;
-}
+    # Call the function to crack the ZIP password
+    crack_zip_password(args.zip_file, args.wordlist)
