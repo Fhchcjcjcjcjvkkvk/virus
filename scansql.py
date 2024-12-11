@@ -21,29 +21,24 @@ def get_form_details(form):
     details = {}
     # Get the form action (target URL)
     try:
-        action = form.attrs.get("action", "").lower()
-    except KeyError:
+        action = form.attrs.get("action").lower()
+    except:
         action = None
-    
     # Get the form method (POST, GET, etc.)
     method = form.attrs.get("method", "get").lower()
-    
     # Get all the input details such as type and name
     inputs = []
     for input_tag in form.find_all("input"):
         input_type = input_tag.attrs.get("type", "text")
         input_name = input_tag.attrs.get("name")
         input_value = input_tag.attrs.get("value", "")
-        
-        # Skip inputs without a name attribute
-        if input_name:
-            inputs.append({"type": input_type, "name": input_name, "value": input_value})
-    
-    # Put everything to the resulting dictionary
+        inputs.append({"type": input_type, "name": input_name, "value": input_value})
+    # Put everything into the resulting dictionary
     details["action"] = action
     details["method"] = method
     details["inputs"] = inputs
     return details
+
 
 def is_vulnerable(response):
     """A simple boolean function that determines whether a page 
@@ -57,17 +52,13 @@ def is_vulnerable(response):
         # Oracle
         "quoted string not properly terminated",
     }
-    try:
-        response_content = response.content.decode().lower()
-    except UnicodeDecodeError:
-        return False
-    
     for error in errors:
         # If you find one of these errors, return True
-        if error in response_content:
+        if error in response.content.decode().lower():
             return True
     # No error detected
     return False
+
 
 def scan_sql_injection(url):
     # Test on URL (only append quotes to the parameters, not the base URL)
@@ -123,16 +114,15 @@ def scan_sql_injection(url):
                 print(f"Error occurred during form submission: {e}")
                 continue
 
+
 def main():
-    # Set up argument parsing
     parser = argparse.ArgumentParser(description="SQL Injection Scanner")
-    parser.add_argument("-u", "--url", required=True, help="Target URL to scan for SQL Injection vulnerabilities")
-    
+    parser.add_argument("-u", "--url", type=str, required=True, help="URL to scan for SQL injection vulnerabilities")
     args = parser.parse_args()
-    url = args.url
-    
-    print(f"[*] Scanning {url} for SQL Injection vulnerabilities...")
-    scan_sql_injection(url)
+
+    print(f"[*] Scanning {args.url} for SQL Injection vulnerabilities...")
+    scan_sql_injection(args.url)
+
 
 if __name__ == "__main__":
     main()
