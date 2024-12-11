@@ -1,7 +1,8 @@
 import requests
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup as bs
 from pprint import pprint
+import argparse  # Import argparse to handle command-line arguments
 
 # Initialize an HTTP session & set the browser
 s = requests.Session()
@@ -51,11 +52,12 @@ def is_vulnerable(response):
 
 
 def scan_sql_injection(url):
-    # test on URL
+    # Test the base URL for SQL injection vulnerability by adding quotes
     for c in "\"'":
-        # URL-encode the quote characters to ensure valid URL
-        encoded_char = quote(c)
-        new_url = f"{url}{encoded_char}"
+        # We are going to add the special characters to the query string or path part only
+        parsed_url = urlparse(url)
+        # Only encode the query or path part, not the base domain
+        new_url = parsed_url._replace(path=parsed_url.path + c).geturl()
         print("[!] Trying", new_url)
         try:
             res = s.get(new_url)
@@ -66,7 +68,7 @@ def scan_sql_injection(url):
             print(f"[!] Error trying URL {new_url}: {e}")
             continue
 
-    # test on HTML forms
+    # Test on HTML forms
     forms = get_all_forms(url)
     print(f"[+] Detected {len(forms)} forms on {url}.")
     for form in forms:
