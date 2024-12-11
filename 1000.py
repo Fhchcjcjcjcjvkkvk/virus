@@ -3,17 +3,17 @@ import os
 import pywifi
 from pywifi import PyWiFi, const, Profile
 
-# Function to get authentication details and channel from netsh using ESSID
-def get_authentication_and_channel(essid):
-    # Run netsh to get the available network's authentication and channel information
+# Function to get authentication details and BSSID from netsh using ESSID
+def get_authentication_and_bssid(essid):
+    # Run netsh to get the available network's authentication and BSSID information
     command = 'netsh wlan show networks mode=bssid'
     result = os.popen(command).read()
 
-    # Parse the output to find the "Authentication" and "Channel" lines for the specific ESSID
+    # Parse the output to find the "Authentication" and "BSSID" lines for the specific ESSID
     lines = result.split("\n")
     current_ssid = None
     authentication = "Unknown"
-    channel = "Unknown"
+    bssid = "Unknown"
 
     # Loop through the lines and extract relevant details for each network
     for line in lines:
@@ -27,11 +27,11 @@ def get_authentication_and_channel(essid):
             if "Authentication" in line:
                 # Extract the authentication type
                 authentication = line.split(":")[1].strip()
-            elif "Channel" in line:
-                # Extract the channel number
-                channel = line.split(":")[1].strip()
+            elif "BSSID" in line:
+                # Extract the BSSID (MAC address)
+                bssid = line.split(":")[1].strip()
 
-    return authentication, channel  # Return both authentication and channel
+    return authentication, bssid  # Return both authentication and BSSID
 
 
 # Function to scan WiFi networks
@@ -46,13 +46,13 @@ def scan_wifi():
 
 # Function to display the network details
 def live_scan():
-    network_details = {}  # Store network details (ESSID as key, auth and channel as values)
+    network_details = {}  # Store network details (ESSID as key, auth and bssid as values)
     
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
-        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Channel':<10}")
-        print("-" * 100)
+        print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30}")
+        print("-" * 80)
 
         for network in networks:
             bssid = network.bssid  # Access the BSSID (MAC address) directly
@@ -61,13 +61,13 @@ def live_scan():
 
             # Check if the ESSID is already in the dictionary, otherwise, get details from netsh
             if essid not in network_details:
-                auth, channel = get_authentication_and_channel(essid)
-                network_details[essid] = (auth, channel)  # Store the details in the dictionary
+                auth, bssid_from_netsh = get_authentication_and_bssid(essid)
+                network_details[essid] = (auth, bssid_from_netsh)  # Store the details in the dictionary
             else:
-                auth, channel = network_details[essid]  # Retrieve the stored details
+                auth, bssid_from_netsh = network_details[essid]  # Retrieve the stored details
 
             # Display the information
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {channel:<10}")
+            print(f"{bssid_from_netsh:<20} {essid:<30} {signal:<10} {auth:<30}")
 
         time.sleep(5)  # Wait for 5 seconds before the next scan
 
