@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup as bs
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from pprint import pprint
 import argparse
 
@@ -38,9 +38,19 @@ def is_vulnerable(response):
             return True
     return False
 
+def is_valid_url(url):
+    parsed = urlparse(url)
+    return bool(parsed.scheme) and bool(parsed.netloc)
+
 def scan_sql_injection(url):
+    if not is_valid_url(url):
+        print(f"[!] Invalid URL: {url}. Please ensure it includes the scheme (http:// or https://).")
+        return
+
     for c in "\"'":
         new_url = f"{url}{c}"
+        if not is_valid_url(new_url):  # Check if the new URL is valid
+            continue
         print("[!] Trying", new_url)
         res = s.get(new_url)
         if is_vulnerable(res):
@@ -60,6 +70,8 @@ def scan_sql_injection(url):
                     data[input_tag["name"]] = f"test{c}"
 
             form_url = urljoin(url, form_details["action"])
+            if not is_valid_url(form_url):  # Check if the form URL is valid
+                continue
             if form_details["method"] == "post":
                 res = s.post(form_url, data=data)
             elif form_details["method"] == "get":
