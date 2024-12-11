@@ -27,7 +27,7 @@ def brute_force_smtp(host, port, username, wordlist_file, use_ssl):
 
     for password in passwords:
         password = password.strip()  # Clean up newlines/spaces
-        print(f"[TRYING] Current passphrase {password}")
+        print(f"[TRYING] {password}")
 
         try:
             # Try to log in with the current password
