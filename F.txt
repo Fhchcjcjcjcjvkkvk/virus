@@ -1,6 +1,0 @@
-Code a py code that when I put handshake usage :airsniff.py Handshake.pcap show of all handshake               
-                                                                                
- BSSID  Beacons    #Data CH ENC ESSID EAPOL
- --------------------------------------------------------------------------------
-Explanation beacons of bssids Bssid Ssid(essid) encryption channnel Channel number (taken from beacon packets).
-Note: sometimes packets from other channels are captured even if airodump-ng is not hopping, because of radio interference or overlapping channels. #Data Number of captured data packets (if WEP, unique IV count), including data broadcast packets. EAPOL number of eapol packets from bssids
