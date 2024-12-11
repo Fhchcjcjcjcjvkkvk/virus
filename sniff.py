@@ -6,8 +6,11 @@ import time
 BSSID = None
 WPA_HANDSHAKE = False
 
+# Initialize a capture list to hold packets
+captured_packets = []
+
 def packet_callback(pkt):
-    global WPA_HANDSHAKE, BSSID
+    global WPA_HANDSHAKE, BSSID, captured_packets
     
     # Capture Beacon Frames (AP broadcasts)
     if 'wlan' in pkt:
@@ -30,6 +33,19 @@ def packet_callback(pkt):
         if pkt.wlan.fc_type_subtype == '0x00':  # Data frame
             client_mac = pkt.wlan.sa
             print(f"Client {client_mac} detected reconnecting to AP: {BSSID}")
+    
+    # Add the packet to the captured list for saving later
+    captured_packets.append(pkt)
+
+def save_capture(output_file):
+    # Write captured packets to a .pcap file
+    if captured_packets:
+        print(f"Saving capture to {output_file}...")
+        # Write packets to the output pcap file
+        pyshark.FileCapture(output_file).save_packets(captured_packets)
+        print(f"Capture saved to {output_file}")
+    else:
+        print("No packets captured. Nothing to save.")
 
 def start_capture(interface, bssid, output_file):
     global BSSID
@@ -40,6 +56,10 @@ def start_capture(interface, bssid, output_file):
     # Start the capture
     capture = pyshark.LiveCapture(interface=interface, display_filter="wlan.fc.type_subtype == 0x08 or eapol")
     capture.apply_on_packets(packet_callback)
+
+    # After capturing for a while, save to the output file
+    time.sleep(30)  # Capture packets for 30 seconds (you can change this time)
+    save_capture(output_file)
 
 if __name__ == "__main__":
     if len(sys.argv) < 5:
