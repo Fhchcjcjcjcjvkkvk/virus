@@ -15,17 +15,21 @@ def get_authentication_and_channel(essid):
     authentication = "Unknown"
     channel = "Unknown"
 
+    # Loop through the lines and extract relevant details for each network
     for line in lines:
         line = line.strip()
 
-        if line.startswith("SSID ") and essid in line:  # Match the ESSID
-            current_ssid = essid
-        elif "Authentication" in line and current_ssid == essid:
-            # Extract the authentication type (e.g., WPA2, WPA3)
-            authentication = line.split(":")[1].strip()
-        elif "Channel" in line and current_ssid == essid:
-            # Extract the channel number
-            channel = line.split(":")[1].strip()
+        if line.startswith("SSID "):  # A new network entry starts here
+            # Extract the ESSID from the line and check if it matches
+            current_ssid = line.split(":")[1].strip()  # Extract ESSID value
+
+        if current_ssid == essid:
+            if "Authentication" in line:
+                # Extract the authentication type
+                authentication = line.split(":")[1].strip()
+            elif "Channel" in line:
+                # Extract the channel number
+                channel = line.split(":")[1].strip()
 
     return authentication, channel  # Return both authentication and channel
 
