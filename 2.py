@@ -4,7 +4,6 @@ import pywifi
 from pywifi import PyWiFi, const, Profile
 from scapy.all import sniff, Dot11Beacon
 from collections import defaultdict
-import threading
 
 # Function to get authentication details from netsh using ESSID
 def get_authentication(essid):
@@ -38,30 +37,27 @@ def scan_wifi():
     return networks
 
 
-# Beacon count tracker (global dictionary)
-beacon_count = defaultdict(int)
+# Dictionary to hold beacon counts
+beacon_counts = defaultdict(int)
 
 
-# Function to capture beacons using Scapy
-def packet_handler(pkt):
+# Function to count beacon frames using scapy
+def count_beacons(pkt):
     if pkt.haslayer(Dot11Beacon):
-        essid = pkt[Dot11].info.decode()  # Extract SSID (ESSID)
-        beacon_count[essid] += 1  # Increment beacon count for the network
+        bssid = pkt[Dot11].addr2  # Get the BSSID (MAC address) of the AP
+        beacon_counts[bssid] += 1  # Increment beacon count for that BSSID
 
 
-# Function to start sniffing for beacons (sniffing in a separate thread)
-def start_sniffing():
-    # Sniff in monitor mode (replace 'wlan0' with your interface name)
-    sniff(prn=packet_handler, store=0, iface="WiFi", timeout=60)  # Adjust interface name and timeout
-
-
-# Function to display the network details along with beacon count
+# Function to display the network details
 def live_scan():
+    # Start sniffing in the background for beacon frames
+    sniff(prn=count_beacons, iface="wlan0", store=0, count=0, timeout=10)  # Adjust 'iface' if needed
+    
     while True:
         networks = scan_wifi()  # Perform the WiFi scan
         os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen for live update
         print(f"{'BSSID':<20} {'ESSID':<30} {'Signal':<10} {'Authentication':<30} {'Beacons':<10}")
-        print("-" * 100)
+        print("-" * 110)
 
         for network in networks:
             bssid = network.bssid  # Access the BSSID (MAC address) directly
@@ -72,17 +68,13 @@ def live_scan():
             auth = get_authentication(essid)
 
             # Get the beacon count from the dictionary
-            beacon_count_for_essid = beacon_count.get(essid, 0)
+            beacon_count = beacon_counts.get(bssid, 0)
 
             # Display the information
-            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {beacon_count_for_essid:<10}")
+            print(f"{bssid:<20} {essid:<30} {signal:<10} {auth:<30} {beacon_count:<10}")
 
         time.sleep(5)  # Wait for 5 seconds before the next scan
 
 
 if __name__ == "__main__":
-    # Start sniffing for beacons in a separate thread
-    sniff_thread = threading.Thread(target=start_sniffing, daemon=True)
-    sniff_thread.start()
-
     live_scan()  # Start the live scan
