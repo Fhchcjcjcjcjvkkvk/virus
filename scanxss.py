@@ -5,6 +5,10 @@ from urllib.parse import urljoin, urlparse  # Importing utilities for URL manipu
 from urllib.robotparser import RobotFileParser  # Importing RobotFileParser for parsing robots.txt files
 from colorama import Fore, Style  # Importing colorama for colored terminal output
 import argparse  # Importing argparse for command-line argument parsing
+import urllib3  # Importing urllib3 to suppress warnings
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # List of XSS payloads to test forms with
 XSS_PAYLOADS = [
