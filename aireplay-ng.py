@@ -7,7 +7,7 @@ from colorama import Fore, init
 # Initialize colorama
 init(autoreset=True)
 
-# Function to get network authentication method using netsh
+# Function to get authentication method using netsh for a given SSID
 def get_authentication_method(ssid):
     try:
         # Run the netsh command to get network information
@@ -16,17 +16,14 @@ def get_authentication_method(ssid):
 
         # Split the result into individual network blocks
         networks = result.split("\n\n")
-
-        # Search for the network by SSID and extract the authentication method
+        
         for network in networks:
             if f"SSID {ssid}" in network:
                 for line in network.splitlines():
                     if "Authentication" in line:
                         auth_method = line.split(":")[1].strip()
                         return auth_method
-        
-        # If no authentication method is found, return "Unknown"
-        return "Unknown"
+        return "Unknown"  # Default if no match found
 
     except Exception as e:
         print(f"Error fetching authentication method: {e}")
@@ -92,7 +89,7 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    auth_method = get_authentication_method(ssid)  # Get the authentication method
+                    auth_method = get_authentication_method(ssid)  # Get the authentication method using netsh
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{auth_method}")
             else:
