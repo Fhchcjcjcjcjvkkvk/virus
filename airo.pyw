@@ -27,13 +27,28 @@ def get_netsh_info():
         # Run the netsh command to get detailed network information
         result = subprocess.run(['netsh', 'wlan', 'show', 'networks'], capture_output=True, text=True)
 
-        # Regex pattern to capture encryption (cipher)
+        # Regex pattern to capture encryption (cipher) and extract types like WPA, WPA2, etc.
         cipher_pattern = re.compile(r"Encryption\s*:\s*(\S+)")
 
         # Parse the output for cipher
         cipher = cipher_pattern.findall(result.stdout)
 
-        return cipher
+        # Map common encryption types to their names
+        enc_map = {
+            "WEP": "WEP",
+            "WPA": "WPA",
+            "WPA2": "WPA2",
+            "WPA3": "WPA3",
+            "None": "OPN",  # For open networks with no encryption
+        }
+
+        enc_info = []
+        for cph in cipher:
+            # Return a human-readable encryption type or 'Unknown'
+            enc_info.append(enc_map.get(cph, "Unknown"))
+        
+        return enc_info
+
     except Exception as e:
         print(Fore.RED + f"Error fetching cipher info: {e}")
         return []
@@ -80,7 +95,7 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Cipher':<20}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'ENC':<10}")
 
             # Print network details
             if networks:
@@ -89,10 +104,10 @@ def main():
                     ssid = net.ssid
                     signal_strength = net.signal
 
-                    # Fetch the cipher (if available)
-                    cph = cipher[idx] if idx < len(cipher) else "N/A"
+                    # Fetch the encryption type (if available)
+                    enc = cipher[idx] if idx < len(cipher) else "N/A"
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cph:<20}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{enc:<10}")
             else:
                 print(Fore.RED + "No networks found.")
 
