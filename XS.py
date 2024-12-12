@@ -20,17 +20,23 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Map authentication constants to their names
-def get_auth_method(auth_code):
-    auth_map = {
-        0: "Open",  # Open authentication (no security)
-        1: "WEP",  # WEP authentication
-        2: "WPA",  # WPA authentication
-        3: "WPA2",  # WPA2 authentication
-        4: "WPA3",  # WPA3 authentication
-        5: "WPA/WPA2 Mixed"  # WPA/WPA2 Mixed authentication
-    }
-    return auth_map.get(auth_code, "Unknown")
+# Function to get the authentication method using netsh
+def get_auth_method_with_netsh(bssid):
+    try:
+        # Run the netsh command to show network details for a specific BSSID
+        command = f"netsh wlan show network bssid={bssid}"
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            return "Unknown"
+
+        # Search for the authentication method in the output
+        for line in result.stdout.split("\n"):
+            if "Authentication" in line:
+                auth_method = line.split(":")[1].strip()
+                return auth_method
+    except Exception as e:
+        return "Unknown"
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -71,7 +77,7 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth Method'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'ENCR'}")
 
             # Print network details
             if networks:
@@ -79,7 +85,7 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    auth_method = get_auth_method(net.auth)  # Get the authentication method
+                    auth_method = get_auth_method_with_netsh(bssid)  # Get the authentication method using netsh
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method}")
             else:
