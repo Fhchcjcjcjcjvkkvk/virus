@@ -20,8 +20,8 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get encryption type using netsh
-def get_encryption_type(ssid):
+# Function to get cipher type using netsh
+def get_cipher_type(ssid):
     try:
         # Run netsh command to show network details for the given SSID
         result = subprocess.run(
@@ -29,13 +29,13 @@ def get_encryption_type(ssid):
             capture_output=True, text=True, check=True
         )
         
-        # Search for the encryption type in the output
+        # Search for the cipher in the output
         output = result.stdout
-        if "Encryption" in output:
+        if "Cipher" in output:
             for line in output.splitlines():
-                if "Encryption" in line:
-                    encryption_type = line.split(":")[1].strip()
-                    return encryption_type
+                if "Cipher" in line:
+                    cipher_type = line.split(":")[1].strip()
+                    return cipher_type
         return "Unknown"
     except subprocess.CalledProcessError:
         return "Unknown"
@@ -61,7 +61,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, signal strength, and encryption
+# Main function to continuously scan and display networks with BSSID, signal strength, and cipher
 def main():
     print_banner()
     try:
@@ -79,7 +79,7 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Encryption'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Cipher'}")
 
             # Print network details
             if networks:
@@ -88,10 +88,10 @@ def main():
                     ssid = net.ssid
                     signal_strength = net.signal
                     
-                    # Get encryption type using netsh
-                    encryption_type = get_encryption_type(ssid)
+                    # Get cipher type using netsh
+                    cipher_type = get_cipher_type(ssid)
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{encryption_type}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{cipher_type}")
             else:
                 print(Fore.RED + "No networks found.")
 
