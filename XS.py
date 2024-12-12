@@ -20,22 +20,17 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get network authentication methods using netsh (Windows only)
-def get_network_authentication():
-    try:
-        # Run the netsh command to show available networks and their authentication types
-        command = "netsh wlan show networks mode=bssid"
-        result = subprocess.check_output(command, shell=True, text=True)
-
-        # Look for authentication details in the result
-        auth_methods = []
-        for line in result.splitlines():
-            if "Authentication" in line:
-                auth_methods.append(line.strip())
-        return auth_methods
-    except subprocess.CalledProcessError:
-        print(Fore.RED + "Failed to get authentication information.")
-        return []
+# Map authentication constants to their names
+def get_auth_method(auth_code):
+    auth_map = {
+        0: "Open",  # Open authentication (no security)
+        1: "WEP",  # WEP authentication
+        2: "WPA",  # WPA authentication
+        3: "WPA2",  # WPA2 authentication
+        4: "WPA3",  # WPA3 authentication
+        5: "WPA/WPA2 Mixed"  # WPA/WPA2 Mixed authentication
+    }
+    return auth_map.get(auth_code, "Unknown")
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -58,7 +53,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, signal strength, and authentication
+# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, and authentication method
 def main():
     print_banner()
     try:
@@ -70,15 +65,13 @@ def main():
 
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
-            # Get authentication methods from netsh
-            auth_methods = get_network_authentication()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'AUTHENTICATION'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth Method'}")
 
             # Print network details
             if networks:
@@ -86,16 +79,9 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    auth_method = "N/A"  # Default to "N/A" if no auth info is available
-
-                    # Check if authentication info matches the network
-                    for auth in auth_methods:
-                        if ssid in auth:
-                            auth_method = auth.split(":")[-1].strip()
-                            break
+                    auth_method = get_auth_method(net.auth)  # Get the authentication method
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method}")
-
             else:
                 print(Fore.RED + "No networks found.")
 
