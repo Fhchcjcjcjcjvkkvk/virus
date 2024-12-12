@@ -13,10 +13,12 @@ def scan_networks_with_tshark(interface_name):
     
     # Run tshark to capture WiFi networks and get the output in a readable format
     try:
+        # On Windows, we can use -i "Wi-Fi" instead of the interface name (example: 'Wi-Fi' or 'Ethernet')
         command = [
             'tshark', '-i', interface_name, '-a', 'duration:10', '-T', 'fields',
             '-e', 'wlan.ssid', '-e', 'wlan.bssid', '-e', 'wlan.signal_strength'
         ]
+        
         result = subprocess.run(command, capture_output=True, text=True, check=True)
 
         # Parse the output from tshark
@@ -58,8 +60,8 @@ def print_loading_bar(percentage):
 
 # Main function to continuously scan and display networks with BSSID and signal strength
 def main():
-    parser = argparse.ArgumentParser(description="WiFi Network Scanner using tshark")
-    parser.add_argument("interface", type=str, help="Name of the WiFi interface (e.g., wlan0, WiFi)")
+    parser = argparse.ArgumentParser(description="WiFi Network Scanner using tshark on Windows")
+    parser.add_argument("interface", type=str, help="Name of the WiFi interface (e.g., Wi-Fi, Ethernet)")
     args = parser.parse_args()
     
     print_banner()
@@ -75,7 +77,7 @@ def main():
             networks = scan_networks_with_tshark(args.interface)
 
             # Clear screen before printing new results
-            os.system("cls" if os.name == "nt" else "clear")
+            os.system("cls")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
