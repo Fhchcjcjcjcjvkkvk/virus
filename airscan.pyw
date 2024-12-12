@@ -20,25 +20,25 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get cipher type using netsh
-def get_cipher_type(ssid):
+# Function to get cipher type using netsh (Windows only)
+def get_cipher_from_netsh(bssid):
     try:
-        # Run netsh command to show network details for the given SSID
-        result = subprocess.run(
-            ["netsh", "wlan", "show", "network", "name=" + ssid],
-            capture_output=True, text=True, check=True
-        )
-        
-        # Search for the cipher in the output
-        output = result.stdout
-        if "Cipher" in output:
-            for line in output.splitlines():
+        # Run the netsh command to get network information
+        command = f'netsh wlan show networks mode=bssid'
+        result = subprocess.check_output(command, shell=True, universal_newlines=True)
+
+        # Check if the BSSID exists in the output and extract the cipher information
+        if bssid in result:
+            lines = result.splitlines()
+            cipher = "Unknown"
+            for line in lines:
                 if "Cipher" in line:
-                    cipher_type = line.split(":")[1].strip()
-                    return cipher_type
-        return "Unknown"
-    except subprocess.CalledProcessError:
-        return "Unknown"
+                    cipher = line.split(":")[1].strip()
+                    break
+            return cipher
+    except subprocess.CalledProcessError as e:
+        print(Fore.RED + f"Error fetching cipher: {e}")
+    return "Unknown"
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -61,7 +61,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, signal strength, and cipher
+# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, and cipher
 def main():
     print_banner()
     try:
@@ -79,7 +79,7 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Cipher'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Cipher'}")
 
             # Print network details
             if networks:
@@ -87,11 +87,9 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    
-                    # Get cipher type using netsh
-                    cipher_type = get_cipher_type(ssid)
+                    cipher = get_cipher_from_netsh(bssid)  # Fetch the cipher for the network
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{cipher_type}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cipher}")
             else:
                 print(Fore.RED + "No networks found.")
 
