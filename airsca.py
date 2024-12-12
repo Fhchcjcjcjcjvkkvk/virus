@@ -1,55 +1,36 @@
 import os
 import time
-import subprocess
+from pywifi import PyWiFi, const, Profile
 from colorama import Fore, init
 
 # Initialize colorama
 init(autoreset=True)
 
-# Function to get available networks using Windows netsh command
+# Function to scan networks using pywifi
 def scan_networks():
     print(Fore.GREEN + "[Scanning for Networks...]")
-    # Run the Windows command to list available Wi-Fi networks
-    result = subprocess.run(["netsh", "wlan", "show", "networks", "mode=bssid"], capture_output=True, text=True)
     
-    if result.returncode != 0:
-        print(Fore.RED + "Error: Unable to scan networks. Please ensure your Wi-Fi is enabled.")
-        return []
+    wifi = PyWiFi()  # Create a PyWiFi object
+    iface = wifi.interfaces()[0]  # Get the first Wi-Fi interface (assuming it is the one used for scanning)
 
-    networks = result.stdout.split("\n")
+    iface.scan()  # Start scanning for networks
+    time.sleep(2)  # Give it some time to scan
+    
+    networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Parse network information from the netsh output
-def parse_networks(networks):
-    parsed_networks = []
-    network_info = {}
-    
-    for line in networks:
-        line = line.strip()
-        
-        if "BSSID" in line:
-            # Store the previous network details before starting a new one
-            if network_info:
-                parsed_networks.append(network_info)
-            network_info = {"BSSID": line.split(":")[1].strip()}
-        
-        elif "SSID" in line:
-            network_info["ESSID"] = line.split(":")[1].strip()
-        
-        elif "Channel" in line:
-            network_info["Channel"] = line.split(":")[1].strip()
-        
-        elif "Encryption" in line:
-            network_info["Encryption"] = line.split(":")[1].strip()
-        
-        elif "Signal" in line:
-            network_info["RSSI"] = line.split(":")[1].strip()
-
-    # Add the last network found
-    if network_info:
-        parsed_networks.append(network_info)
-
-    return parsed_networks
+# Function to map encryption types to human-readable strings
+def get_encryption_str(encryption_type):
+    if encryption_type == const.AUTH_ALG_OPEN:
+        return "None"
+    elif encryption_type == const.AUTH_ALG_WEP:
+        return "WEP"
+    elif encryption_type == const.AUTH_ALG_WPA:
+        return "WPA/WPA2"
+    elif encryption_type == const.AUTH_ALG_WPA3:
+        return "WPA3"
+    else:
+        return "Unknown"
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -84,22 +65,22 @@ def main():
 
             # Get and parse network data
             networks = scan_networks()
-            if not networks:
-                continue  # Skip iteration if no networks found or error occurs
-
-            parsed_networks = parse_networks(networks)
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'Channel':<8}{'Encryption':<15}{'RSSI'}")
+            print(Fore.GREEN + f"{'SSID':<30}{'Signal Strength':<15}{'Encryption'}")
 
             # Print network details
-            if parsed_networks:
-                for net in parsed_networks:
-                    print(f"{net.get('BSSID', 'N/A'):<20}{net.get('ESSID', 'N/A'):<30}{net.get('Channel', 'N/A'):<8}{net.get('Encryption', 'N/A'):<15}{net.get('RSSI', 'N/A')}")
+            if networks:
+                for net in networks:
+                    ssid = net.ssid
+                    signal_strength = net.signal
+                    encryption = get_encryption_str(net.encryption)
+                    
+                    print(f"{ssid:<30}{signal_strength:<15}{encryption}")
             else:
                 print(Fore.RED + "No networks found.")
 
