@@ -20,7 +20,7 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get network details using netsh
+# Function to get network security details using netsh
 def get_network_security_details():
     try:
         # Run the netsh command to get network details
@@ -40,7 +40,9 @@ def get_network_security_details():
             elif "Cipher" in line:
                 current_network['Cipher'] = line.split(":")[1].strip()
             elif "Encryption" in line:
-                current_network['Encryption'] = line.split(":")[1].strip()
+                # The 'Encryption' line usually gives WPA/WPA2 etc.
+                encryption = line.split(":")[1].strip()
+                current_network['ENC'] = encryption
 
         if current_network:
             networks_details.append(current_network)
@@ -103,7 +105,7 @@ def main():
                     signal_strength = net.signal
                     auth = security.get('Auth', 'N/A')
                     cipher = security.get('Cipher', 'N/A')
-                    encryption = security.get('Encryption', 'N/A')
+                    encryption = security.get('ENC', 'N/A')
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth:<20}{cipher:<15}{encryption:<10}")
             else:
