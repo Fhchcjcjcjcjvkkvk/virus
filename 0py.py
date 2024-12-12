@@ -52,6 +52,17 @@ def get_encryption_details():
     
     return networks
 
+# Function to get the interface index by name
+def get_interface_index(interface_name):
+    wifi = PyWiFi()
+    interfaces = wifi.interfaces()
+    
+    # Look for the interface by name and return its index
+    for index, iface in enumerate(interfaces):
+        if iface.name == interface_name:
+            return index
+    return None  # Return None if the interface is not found
+
 # Display the banner in green with the antenna in red
 def print_banner():
     banner = f"""
@@ -77,6 +88,14 @@ def print_loading_bar(percentage):
 def main(args):
     print_banner()
     try:
+        # Get the interface index by name
+        interface_index = get_interface_index(args.interface)
+        if interface_index is None:
+            print(Fore.RED + f"Interface '{args.interface}' not found.")
+            return
+
+        print(Fore.GREEN + f"Using interface: {args.interface} (Index: {interface_index})")
+        
         while True:
             # Simulate loading bar before displaying networks
             for i in range(101):
@@ -84,7 +103,7 @@ def main(args):
                 time.sleep(0.05)
 
             # Get networks using pywifi
-            networks = scan_networks_with_pywifi(args.interface)
+            networks = scan_networks_with_pywifi(interface_index)
             encryption_details = get_encryption_details()
 
             # Clear screen before printing new results
@@ -92,7 +111,7 @@ def main(args):
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Encry':<15}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Encryption':<15}")
 
             # Create a dictionary for fast lookup of encryption details
             encryption_dict = {net["SSID"]: net["Encryption"] for net in encryption_details}
@@ -121,8 +140,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Airscan - A Wi-Fi scanner using pywifi.")
     parser.add_argument(
         "interface", 
-        type=int, 
-        help="Index of the Wi-Fi interface to use for scanning (e.g., 0 for the first interface, 1 for the second, etc.)."
+        type=str, 
+        help="Name of the Wi-Fi interface to use for scanning (e.g., 'WiFi', 'Ethernet', etc.)."
     )
     return parser.parse_args()
 
