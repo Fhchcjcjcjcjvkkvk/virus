@@ -20,34 +20,27 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get the authentication method using netsh (Windows only)
-def get_network_authentication():
-    try:
-        # Run netsh command to get details about the Wi-Fi networks
-        result = subprocess.check_output('netsh wlan show networks mode=bssid', shell=True, text=True)
+# Function to get the authentication method using netsh
+def get_authentication_method():
+    # Run the netsh command to show available networks
+    command = "netsh wlan show networks"
+    result = subprocess.run(command, capture_output=True, text=True, shell=True)
 
-        # Find the authentication method in the output
+    # Check if command was successful
+    if result.returncode == 0:
+        output = result.stdout
         auth_method = None
-        for line in result.splitlines():
-            if "Authentication" in line:
-                auth_method = line.split(":")[1].strip()
 
-                # Check and return specific authentication methods
-                if "WPA3" in auth_method:
-                    return "WPA3"
-                elif "WPA2" in auth_method:
-                    return "WPA2"
-                elif "WPA" in auth_method:
-                    return "WPA"
-                elif "WEP" in auth_method:
-                    return "WEP"
-                elif "Open" in auth_method:
-                    return "Open"
-                else:
-                    return auth_method
-        return "Unknown"  # If the method is not found
-    except subprocess.CalledProcessError:
-        return None
+        # Look for the line containing the authentication method (WPA2, WPA, etc.)
+        for line in output.splitlines():
+            if "Authentication" in line:
+                auth_method = line.split(":")[1].strip()  # Extract the authentication type
+                break
+
+        return auth_method if auth_method else "Unknown"
+    else:
+        print(Fore.RED + "Failed to retrieve network details.")
+        return "Error"
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -70,7 +63,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, signal strength, and authentication method
+# Main function to continuously scan and display networks with BSSID and signal strength
 def main():
     print_banner()
     try:
@@ -88,7 +81,10 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth Method':<20}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'AUTH'}")
+
+            # Get authentication method
+            auth_method = get_authentication_method()
 
             # Print network details
             if networks:
@@ -97,11 +93,8 @@ def main():
                     ssid = net.ssid
                     signal_strength = net.signal
 
-                    # Get the authentication method for the network (Windows only)
-                    auth_method = get_network_authentication()
-
-                    # Print the network information including the authentication method
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method if auth_method else 'Unknown'}")
+                    # Display the network information along with authentication method
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method}")
             else:
                 print(Fore.RED + "No networks found.")
 
