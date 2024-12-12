@@ -21,42 +21,27 @@ def scan_networks_with_pywifi():
     return networks
 
 # Function to get the authentication method using netsh
-def get_auth_method_with_netsh():
+def get_auth_method(bssid):
     try:
-        # Run the netsh command to show wireless networks
-        command = "netsh wlan show networks mode=Bssid"
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        # Run the netsh command to get network details
+        result = subprocess.run(['netsh', 'wlan', 'show', 'network', 'mode=Bssid'], capture_output=True, text=True)
 
-        if result.returncode != 0:
-            print(Fore.RED + "Error: Could not fetch network details.")
-            return []
-
-        # Split the result into lines and extract relevant information
-        networks = result.stdout.split("\n")
+        # Find the BSSID and Authentication method from the output
+        networks_info = result.stdout.split("\n")
+        auth_method = "N/A"
         
-        network_list = []
-        network_info = {}
-
-        for line in networks:
-            # BSSID and Auth Method
-            if "BSSID" in line:
-                if network_info:  # Save the previous network info before starting a new one
-                    network_list.append(network_info)
-                network_info = {"BSSID": line.split(":")[1].strip()}  # Save BSSID
-            elif "SSID" in line:
-                network_info["ESSID"] = line.split(":")[1].strip()  # Save SSID
-            elif "Signal" in line:
-                network_info["PWR"] = line.split(":")[1].strip()  # Save signal strength
-            elif "Authentication" in line:
-                network_info["Auth Method"] = line.split(":")[1].strip()  # Save authentication method
-
-        if network_info:  # Append the last network's info
-            network_list.append(network_info)
-
-        return network_list
+        for line in networks_info:
+            if "BSSID" in line and bssid in line:
+                # Found the correct BSSID, now find the authentication method
+                for i in range(len(networks_info)):
+                    if "Authentication" in networks_info[i]:
+                        auth_method = networks_info[i].split(":")[1].strip()
+                        break
+                break
+        return auth_method
     except Exception as e:
-        print(Fore.RED + f"Error: {e}")
-        return []
+        print(Fore.RED + f"Error fetching auth method: {e}")
+        return "N/A"
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -79,7 +64,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, and authentication method
+# Main function to continuously scan and display networks with BSSID, signal strength, and authentication method
 def main():
     print_banner()
     try:
@@ -92,31 +77,23 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
-            # Get authentication methods using netsh
-            netsh_networks = get_auth_method_with_netsh()
-
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth Method'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Auth Method'}")
 
-            # Print pywifi network details
+            # Print network details
             if networks:
                 for net in networks:
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    
-                    # Try to match the authentication method from netsh output
-                    auth_method = "Unknown"
-                    for netsh_net in netsh_networks:
-                        if netsh_net["BSSID"] == bssid:
-                            auth_method = netsh_net.get("Auth Method", "Unknown")
-                            break
+                    auth_method = get_auth_method(bssid)
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{auth_method}")
+
             else:
                 print(Fore.RED + "No networks found.")
 
