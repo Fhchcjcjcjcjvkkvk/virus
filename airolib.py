@@ -29,7 +29,7 @@ def get_authentication_method(bssid):
 
         # Look for the specific network details by matching the BSSID
         networks = result.split('\n')
-        auth_method = None
+        auth_method = "Unknown"  # Default to "Unknown"
         for line in networks:
             if bssid in line:
                 # Authentication Method
