@@ -20,28 +20,21 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get the authentication method using netsh
-def get_auth_method(bssid):
+# Function to get the authentication method using netsh (Windows only)
+def get_network_authentication():
     try:
-        # Run the netsh command to get network details
-        result = subprocess.run(['netsh', 'wlan', 'show', 'network', 'mode=Bssid'], capture_output=True, text=True)
+        # Run netsh command to get details about the Wi-Fi networks
+        result = subprocess.check_output('netsh wlan show networks mode=bssid', shell=True, text=True)
 
-        # Find the BSSID and Authentication method from the output
-        networks_info = result.stdout.split("\n")
-        auth_method = "N/A"
-        
-        for line in networks_info:
-            if "BSSID" in line and bssid in line:
-                # Found the correct BSSID, now find the authentication method
-                for i in range(len(networks_info)):
-                    if "Authentication" in networks_info[i]:
-                        auth_method = networks_info[i].split(":")[1].strip()
-                        break
+        # Find the authentication method in the output
+        auth_method = None
+        for line in result.splitlines():
+            if "Authentication" in line:
+                auth_method = line.split(":")[1].strip()
                 break
         return auth_method
-    except Exception as e:
-        print(Fore.RED + f"Error fetching auth method: {e}")
-        return "N/A"
+    except subprocess.CalledProcessError:
+        return None
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -82,7 +75,7 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Auth Method'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth Method':<20}")
 
             # Print network details
             if networks:
@@ -90,10 +83,12 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    auth_method = get_auth_method(bssid)
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{auth_method}")
+                    # Get the authentication method for the network (Windows only)
+                    auth_method = get_network_authentication()
 
+                    # Print the network information including the authentication method
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method if auth_method else 'Unknown'}")
             else:
                 print(Fore.RED + "No networks found.")
 
