@@ -1,7 +1,9 @@
 import os
 import time
+import subprocess
 from pywifi import PyWiFi
 from colorama import Fore, init
+import re
 
 # Initialize colorama
 init(autoreset=True)
@@ -18,6 +20,37 @@ def scan_networks_with_pywifi():
     
     networks = iface.scan_results()  # Get the scan results
     return networks
+
+# Function to get detailed network information using 'netsh' (Windows only)
+def get_network_details():
+    try:
+        # Run the command to get Wi-Fi network details
+        result = subprocess.check_output("netsh wlan show networks mode=bssid", shell=True, text=True)
+        
+        # Extract relevant details using regular expressions
+        networks_info = []
+        network_entries = result.split('\n\n')
+
+        for entry in network_entries:
+            cipher = re.search(r"Cipher\s*:\s*(\S+)", entry)
+            enc = re.search(r"Encryption\s*:\s*(\S+)", entry)
+            ssid = re.search(r"SSID\s*:\s*(\S+)", entry)
+            bssid = re.search(r"BSSID\s*:\s*([\da-fA-F:]+)", entry)
+
+            if ssid and bssid:
+                network_info = {
+                    "ssid": ssid.group(1),
+                    "bssid": bssid.group(1),
+                    "cipher": cipher.group(1) if cipher else "N/A",
+                    "encryption": enc.group(1) if enc else "N/A"
+                }
+                networks_info.append(network_info)
+
+        return networks_info
+
+    except subprocess.CalledProcessError:
+        print(Fore.RED + "Failed to run netsh command. Ensure you're on Windows.")
+        return []
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -53,6 +86,9 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
+            # Get detailed network info using 'netsh'
+            netsh_networks = get_network_details()
+
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
@@ -66,8 +102,11 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    encryption = net.encryption  # Encryption type (WEP, WPA, WPA2)
-                    cipher = net.cipher  # Cipher suite used
+
+                    # Find matching network details from 'netsh' output
+                    matching_netsh = next((n for n in netsh_networks if n['bssid'] == bssid), None)
+                    cipher = matching_netsh['cipher'] if matching_netsh else "N/A"
+                    encryption = matching_netsh['encryption'] if matching_netsh else "N/A"
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cipher:<10}{encryption:<10}")
             else:
