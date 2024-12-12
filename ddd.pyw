@@ -20,6 +20,26 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
+# Function to get encryption type using netsh
+def get_encryption_type(ssid):
+    try:
+        # Run netsh command to show network details for the given SSID
+        result = subprocess.run(
+            ["netsh", "wlan", "show", "network", "name=" + ssid],
+            capture_output=True, text=True, check=True
+        )
+        
+        # Search for the encryption type in the output
+        output = result.stdout
+        if "Encryption" in output:
+            for line in output.splitlines():
+                if "Encryption" in line:
+                    encryption_type = line.split(":")[1].strip()
+                    return encryption_type
+        return "Unknown"
+    except subprocess.CalledProcessError:
+        return "Unknown"
+
 # Display the banner in green with the antenna in red
 def print_banner():
     banner = f"""
@@ -67,21 +87,9 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    encryption = net.encryption
-
-                    # Convert encryption code to readable text
-                    if encryption == 0:
-                        encryption_type = "Open"
-                    elif encryption == 1:
-                        encryption_type = "WEP"
-                    elif encryption == 2:
-                        encryption_type = "WPA"
-                    elif encryption == 3:
-                        encryption_type = "WPA2"
-                    elif encryption == 4:
-                        encryption_type = "WPA/WPA2"
-                    else:
-                        encryption_type = "Unknown"
+                    
+                    # Get encryption type using netsh
+                    encryption_type = get_encryption_type(ssid)
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{encryption_type}")
             else:
