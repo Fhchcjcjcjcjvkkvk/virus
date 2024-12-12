@@ -1,14 +1,15 @@
 import os
 import time
-from pywifi import PyWiFi, const, Profile
+import subprocess
+from pywifi import PyWiFi
 from colorama import Fore, init
 
 # Initialize colorama
 init(autoreset=True)
 
-# Function to scan networks using pywifi
-def scan_networks():
-    print(Fore.GREEN + "[Scanning for Networks...]")
+# Function to get available networks using pywifi
+def scan_networks_with_pywifi():
+    print(Fore.GREEN + "[Scanning for Networks using pywifi...]")
     
     wifi = PyWiFi()  # Create a PyWiFi object
     iface = wifi.interfaces()[0]  # Get the first Wi-Fi interface (assuming it is the one used for scanning)
@@ -19,18 +20,25 @@ def scan_networks():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to map encryption types to human-readable strings
-def get_encryption_str(encryption_type):
-    if encryption_type == const.AUTH_ALG_OPEN:
-        return "None"
-    elif encryption_type == const.AUTH_ALG_WEP:
-        return "WEP"
-    elif encryption_type == const.AUTH_ALG_WPA:
-        return "WPA/WPA2"
-    elif encryption_type == const.AUTH_ALG_WPA3:
-        return "WPA3"
-    else:
+# Function to get encryption type using netsh for each network SSID
+def get_encryption_from_netsh(ssid):
+    print(f"Checking encryption for network: {ssid}")
+    result = subprocess.run(
+        ["netsh", "wlan", "show", "network", "name=" + ssid],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode != 0:
+        print(Fore.RED + f"Error: Unable to fetch encryption details for {ssid}.")
         return "Unknown"
+    
+    # Search for the encryption line in the netsh output
+    for line in result.stdout.split("\n"):
+        if "Encryption" in line:
+            encryption = line.split(":")[1].strip()
+            return encryption
+    return "Unknown"
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -53,7 +61,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Function to continuously scan and display networks
+# Main function to continuously scan and display networks with encryption info
 def main():
     print_banner()
     try:
@@ -63,8 +71,8 @@ def main():
                 print_loading_bar(i / 100)
                 time.sleep(0.05)
 
-            # Get and parse network data
-            networks = scan_networks()
+            # Get networks using pywifi
+            networks = scan_networks_with_pywifi()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
@@ -78,8 +86,10 @@ def main():
                 for net in networks:
                     ssid = net.ssid
                     signal_strength = net.signal
-                    encryption = get_encryption_str(net.encryption)
                     
+                    # Get encryption type from netsh
+                    encryption = get_encryption_from_netsh(ssid)
+
                     print(f"{ssid:<30}{signal_strength:<15}{encryption}")
             else:
                 print(Fore.RED + "No networks found.")
