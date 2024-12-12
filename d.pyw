@@ -32,17 +32,19 @@ def get_network_details():
         network_entries = result.split('\n\n')
 
         for entry in network_entries:
+            # Improved regex to capture Cipher and Encryption values properly
             cipher = re.search(r"Cipher\s*:\s*(\S+)", entry)
-            enc = re.search(r"Encryption\s*:\s*(\S+)", entry)
-            ssid = re.search(r"SSID\s*:\s*(\S+)", entry)
+            encryption = re.search(r"Encryption\s*:\s*(\S+)", entry)
+            ssid = re.search(r"SSID\s*:\s*(.*)", entry)  # Handles possible spaces in SSID
             bssid = re.search(r"BSSID\s*:\s*([\da-fA-F:]+)", entry)
 
+            # If SSID and BSSID are found, store the network information
             if ssid and bssid:
                 network_info = {
-                    "ssid": ssid.group(1),
+                    "ssid": ssid.group(1).strip(),  # Remove extra spaces
                     "bssid": bssid.group(1),
-                    "cipher": cipher.group(1) if cipher else "N/A",
-                    "encryption": enc.group(1) if enc else "N/A"
+                    "cipher": cipher.group(1) if cipher else "Unknown",  # Default to "Unknown" if not found
+                    "encryption": encryption.group(1) if encryption else "Unknown"  # Default to "Unknown" if not found
                 }
                 networks_info.append(network_info)
 
@@ -105,8 +107,8 @@ def main():
 
                     # Find matching network details from 'netsh' output
                     matching_netsh = next((n for n in netsh_networks if n['bssid'] == bssid), None)
-                    cipher = matching_netsh['cipher'] if matching_netsh else "N/A"
-                    encryption = matching_netsh['encryption'] if matching_netsh else "N/A"
+                    cipher = matching_netsh['cipher'] if matching_netsh else "Unknown"
+                    encryption = matching_netsh['encryption'] if matching_netsh else "Unknown"
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cipher:<10}{encryption:<10}")
             else:
