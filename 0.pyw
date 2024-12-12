@@ -32,12 +32,15 @@ def get_cipher_from_netsh(bssid):
             lines = result.splitlines()
             cipher = "Unknown"
             
-            # Try to find the 'Cipher' line and extract its value
+            # Search for the line containing "Encryption" which indicates the cipher
             for line in lines:
-                if "Cipher" in line:
+                if "Encryption" in line:
                     cipher = line.split(":")[1].strip()
                     break
-            return cipher
+
+            # We want to return the cipher type like "WEP", "CCMP", "TKIP"
+            return cipher if cipher else "Unknown"
+    
     except subprocess.CalledProcessError as e:
         print(Fore.RED + f"Error fetching cipher: {e}")
     return "Unknown"
