@@ -3,6 +3,7 @@ import time
 import subprocess
 from pywifi import PyWiFi
 from colorama import Fore, init
+import re
 
 # Initialize colorama
 init(autoreset=True)
@@ -20,25 +21,22 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get encryption type using netsh
-def get_encryption_type(ssid):
+# Function to get encryption (cipher) using netsh
+def get_netsh_info():
     try:
-        # Run netsh command to show network details for the given SSID
-        result = subprocess.run(
-            ["netsh", "wlan", "show", "network", "name=" + ssid],
-            capture_output=True, text=True, check=True
-        )
-        
-        # Search for the encryption type in the output
-        output = result.stdout
-        if "Encryption" in output:
-            for line in output.splitlines():
-                if "Encryption" in line:
-                    encryption_type = line.split(":")[1].strip()
-                    return encryption_type
-        return "Unknown"
-    except subprocess.CalledProcessError:
-        return "Unknown"
+        # Run the netsh command to get detailed network information
+        result = subprocess.run(['netsh', 'wlan', 'show', 'networks'], capture_output=True, text=True)
+
+        # Regex pattern to capture encryption (cipher)
+        cipher_pattern = re.compile(r"Encryption\s*:\s*(\S+)")
+
+        # Parse the output for cipher
+        cipher = cipher_pattern.findall(result.stdout)
+
+        return cipher
+    except Exception as e:
+        print(Fore.RED + f"Error fetching cipher info: {e}")
+        return []
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -61,7 +59,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, signal strength, and encryption
+# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, and cipher
 def main():
     print_banner()
     try:
@@ -74,24 +72,27 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
+            # Get cipher info using netsh
+            cipher = get_netsh_info()
+
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Encryption'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Cipher':<20}")
 
             # Print network details
             if networks:
-                for net in networks:
+                for idx, net in enumerate(networks):
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    
-                    # Get encryption type using netsh
-                    encryption_type = get_encryption_type(ssid)
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{encryption_type}")
+                    # Fetch the cipher (if available)
+                    cph = cipher[idx] if idx < len(cipher) else "N/A"
+
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cph:<20}")
             else:
                 print(Fore.RED + "No networks found.")
 
