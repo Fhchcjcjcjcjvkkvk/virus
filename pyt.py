@@ -64,7 +64,8 @@ def get_interface_index(interface_name):
 
     # Look for the interface by name and return its index
     for index, iface in enumerate(interfaces):
-        if iface.name == interface_name:
+        # Check for both "Wi-Fi" and "WiFi" to ensure compatibility with TShark
+        if iface.name == interface_name or iface.name.lower() == interface_name.lower():
             return index
     return None  # Return None if the interface is not found
 
