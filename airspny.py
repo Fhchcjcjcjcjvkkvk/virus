@@ -66,7 +66,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with encryption and authentication info
+# Main function to continuously scan and display networks with encryption, authentication, and BSSID info
 def main():
     print_banner()
     try:
@@ -84,18 +84,19 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'SSID':<30}{'Signal Strength':<15}{'Encryption':<15}{'Authentication'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'SSID':<30}{'Signal Strength':<15}{'Encryption':<15}{'Authentication'}")
 
             # Print network details
             if networks:
                 for net in networks:
+                    bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
                     
                     # Get encryption and authentication type from netsh
                     encryption, authentication = get_encryption_and_auth_from_netsh(ssid)
 
-                    print(f"{ssid:<30}{signal_strength:<15}{encryption:<15}{authentication}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<15}{encryption:<15}{authentication}")
             else:
                 print(Fore.RED + "No networks found.")
 
