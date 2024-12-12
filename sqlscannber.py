@@ -95,6 +95,9 @@ def scan_url(url, headers=None):
     print(f"Scanning {url} for forms...")
     forms = find_forms(url, headers=headers)
 
+    # Initialize vulnerability state
+    vulnerability_logged = False
+
     if forms:
         print(f"{len(forms)} form(s) detected. Testing for SQL Injection vulnerabilities...")
         for form in forms:
@@ -102,9 +105,14 @@ def scan_url(url, headers=None):
             vulnerable = test_form(url, form, method, headers=headers)
             if vulnerable:
                 print("[+] Vulnerability found and logged!")
-                break
+                vulnerability_logged = True
+                break  # Stop testing after finding one vulnerability
     else:
         print("No forms detected on this page.")
+
+    # Print "FAILED" if no vulnerabilities were logged
+    if not vulnerability_logged:
+        print("FAILED: No SQL injection vulnerabilities detected.")
 
 # Threaded scanning function
 def threaded_scan(urls, headers=None):
@@ -120,15 +128,22 @@ def threaded_scan(urls, headers=None):
 # Main function to accept command-line arguments
 def main():
     if len(sys.argv) < 3 or sys.argv[1] != '-u':
-        print("Usage: python sqlscan.py -u <url> [optional: --headers 'User-Agent: ...']")
+        print("Usage: python sqlscan.py -u <url> [optional: --headers 'Header1: Value1, Header2: Value2']")
         sys.exit(1)
 
-    url = sys.argv[2]
-    headers = None
+    url = sys.argv[2].strip()  # Strip unnecessary spaces or newlines
+    if not url.startswith("http"):
+        print("Error: Invalid URL. Please provide a valid URL starting with http or https.")
+        sys.exit(1)
 
+    headers = None
     if len(sys.argv) > 3 and sys.argv[3] == '--headers':
-        headers = {k: v for k, v in [h.split(": ") for h in sys.argv[4].split(",")]}
-    
+        try:
+            headers = {k.strip(): v.strip() for k, v in [h.split(":") for h in sys.argv[4].split(",")]}
+        except ValueError:
+            print("Error: Invalid headers format. Use '--headers \"Header1: Value1, Header2: Value2\"'")
+            sys.exit(1)
+
     scan_url(url, headers=headers)
 
 if __name__ == "__main__":
