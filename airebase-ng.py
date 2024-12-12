@@ -7,10 +7,10 @@ from colorama import Fore, init
 # Initialize colorama
 init(autoreset=True)
 
-# Function to get authentication method using netsh for a given SSID
-def get_authentication_method():
+# Function to get all authentication methods using netsh
+def get_all_authentication_methods():
     try:
-        # Run the netsh command to get network information (mode=Bssid shows more details)
+        # Run the netsh command to get network information
         command = 'netsh wlan show networks'
         result = subprocess.check_output(command, shell=True, text=True)
 
@@ -18,10 +18,12 @@ def get_authentication_method():
         networks = result.split("\n\n")
         
         auth_methods = []
+
+        # Loop through the blocks of network information
         for network in networks:
             auth_method = "Unknown"  # Default to "Unknown"
             
-            # Parse the network block for Authentication method
+            # Look for the "Authentication" line and extract the method
             for line in network.splitlines():
                 if "Authentication" in line:
                     auth_method = line.split(":")[1].strip()
@@ -81,7 +83,7 @@ def main():
             networks = scan_networks_with_pywifi()
 
             # Get authentication methods using netsh
-            auth_methods = get_authentication_method()
+            auth_methods = get_all_authentication_methods()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
