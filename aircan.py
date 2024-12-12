@@ -21,24 +21,22 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get encryption and cipher using netsh
+# Function to get cipher using netsh
 def get_netsh_info():
     try:
         # Run the netsh command to get detailed network information
         result = subprocess.run(['netsh', 'wlan', 'show', 'networks'], capture_output=True, text=True)
 
-        # Regex patterns to capture encryption and cipher
-        encryption_pattern = re.compile(r"Encryption\s*:\s*(\S+)")
+        # Regex pattern to capture cipher
         cipher_pattern = re.compile(r"Cipher\s*:\s*(\S+)")
 
-        # Parse the output for encryption and cipher
-        encryption = encryption_pattern.findall(result.stdout)
+        # Parse the output for cipher
         cipher = cipher_pattern.findall(result.stdout)
 
-        return encryption, cipher
+        return cipher
     except Exception as e:
-        print(Fore.RED + f"Error fetching encryption and cipher info: {e}")
-        return [], []
+        print(Fore.RED + f"Error fetching cipher info: {e}")
+        return []
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -61,7 +59,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, encryption, and cipher
+# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, and cipher
 def main():
     print_banner()
     try:
@@ -74,15 +72,15 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
-            # Get encryption and cipher info using netsh
-            encryption, cipher = get_netsh_info()
+            # Get cipher info using netsh
+            cipher = get_netsh_info()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Encryption':<20}{'Cipher':<20}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Cipher':<20}")
 
             # Print network details
             if networks:
@@ -91,11 +89,10 @@ def main():
                     ssid = net.ssid
                     signal_strength = net.signal
 
-                    # Fetch the encryption and cipher (if available)
-                    enc = encryption[idx] if idx < len(encryption) else "N/A"
+                    # Fetch the cipher (if available)
                     cip = cipher[idx] if idx < len(cipher) else "N/A"
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{enc:<20}{cip:<20}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cip:<20}")
             else:
                 print(Fore.RED + "No networks found.")
 
