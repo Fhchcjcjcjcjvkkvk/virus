@@ -1,121 +1,92 @@
-import subprocess
+import os
 import time
-import sys
-from termcolor import colored
-from colorama import init
+import subprocess
+from colorama import Fore, init
 
-# Initialize colorama for Windows compatibility
-init()
+# Initialize colorama
+init(autoreset=True)
 
-# Function to scan available networks (Windows)
+# Function to get available networks using Windows netsh command
 def scan_networks():
-    try:
-        # Run the command to scan networks
-        scan_result = subprocess.check_output("netsh wlan show networks mode=bssid", shell=True, universal_newlines=True)
-        return scan_result
-    except subprocess.CalledProcessError as e:
-        print(f"Error scanning networks: {e}")
-        return None
-
-# Function to parse the scan result
-def parse_networks(scan_result):
-    networks = []
-    current_network = {}
-    lines = scan_result.splitlines()
-    
-    for line in lines:
-        if "BSSID" in line:  # New network entry
-            if current_network:
-                networks.append(current_network)
-            current_network = {}
-        elif "BSSID" in line:
-            current_network['BSSID'] = line.split(":")[1].strip()
-        elif "SSID" in line:
-            current_network['ESSID'] = line.split(":")[1].strip()
-        elif "Channel" in line:
-            current_network['CH'] = line.split(":")[1].strip()
-        elif "Encryption" in line:
-            current_network['ENCR'] = line.split(":")[1].strip()
-        elif "Signal" in line:
-            current_network['RSSI'] = line.split(":")[1].strip().split()[0]
-    
-    if current_network:
-        networks.append(current_network)  # Add last network
+    print(Fore.GREEN + "[Scanning for Networks...]")
+    # Run the Windows command to list available Wi-Fi networks
+    result = subprocess.run(["netsh", "wlan", "show", "networks", "mode=bssid"], capture_output=True, text=True)
+    networks = result.stdout.split("\n")
     return networks
 
-# Function to print networks in columns
-def print_networks(networks, elapsed_time):
-    # Display elapsed time in minutes
-    minutes = elapsed_time // 60
-    print(f"{f'Elapsed: {minutes} min':<15}{'BSSID':<20}{'ESSID':<20}{'CH':<5}{'ENCR':<10}{'RSSI':<5}")
-    for network in networks:
-        print(f"{' ':<15}{network['BSSID']:<20}{network['ESSID']:<20}{network['CH']:<5}{network['ENCR']:<10}{network['RSSI']:<5}")
+# Parse network information from the netsh output
+def parse_networks(networks):
+    parsed_networks = []
+    network_info = {}
+    for line in networks:
+        if "BSSID" in line:
+            if network_info:
+                parsed_networks.append(network_info)
+            network_info = {"BSSID": line.split(":")[1].strip()}
+        elif "SSID" in line:
+            network_info["ESSID"] = line.split(":")[1].strip()
+        elif "Channel" in line:
+            network_info["Channel"] = line.split(":")[1].strip()
+        elif "Encryption" in line:
+            network_info["Encryption"] = line.split(":")[1].strip()
+        elif "Signal" in line:
+            network_info["RSSI"] = line.split(":")[1].strip()
+    if network_info:
+        parsed_networks.append(network_info)
+    return parsed_networks
 
-# Function to prompt user for interface
-def get_user_input():
-    interface = input("Enter INTERFACE (e.g., Wi-Fi): ")
-    return interface
-
-# Function to print colored banner with antenna in green
+# Display the banner in green
 def print_banner():
-    banner = """
-    .;'                     ;,  ;,   
-    .;'  ,;'             ;,  ;,   
-    .;'  ,;'  ,;'     ;,  ;,  ;,  
+    banner = f"""
+    {Fore.GREEN}.;'  ,;'             `;,  `;,   
+    .;'  ,;'  ,;'     `;,  `;,  `;,  
     ::   ::   :   ( )   :   ::   ::  
     ':   ':   ':  /_\\ ,:'  ,:'  ,:'  
      ':   ':     /___\\    ,:'  ,:'   
-      ':        /_____\     ,:'     
-            /       \\         
+      ':        /_____\\      ,:'     
+               /       \\          
     """
-    # Color the waves (antenna) in green
-    green_wave = """
-    .;'  ,;'             ;,  ;,   
-    .;'  ,;'  ,;'     ;,  ;,  ;,  
-    ::   ::   :   ( )   :   ::   ::  
-    """
-    print(colored(".;'                     ;,  ;,", 'red'))
-    print(colored(green_wave, 'green'))
-    print(colored(".;'  ,;'             ;,  ;,", 'red'))
-    print(colored(".;'  ,;'  ,;'     ;,  ;,  ;,", 'red'))
-    print(colored("::   ::   :   ( )   :   ::   ::", 'red'))
-    print(colored("':   ':   ':  /_\\ ,:'  ,:'  ,:'", 'red'))
-    print(colored(" ':   ':     /___\\    ,:'  ,:'", 'red'))
-    print(colored("  ':        /_____\\     ,:'", 'red'))
-    print(colored("            /       \\         ", 'red'))
+    print(banner)
 
-# Function to show a loading bar animation
-def show_loading_bar():
-    # Simulate loading progress for 5 seconds
-    total_steps = 50
-    for i in range(total_steps + 1):
-        percent = (i * 100) // total_steps
-        bar = '█' * i + ' ' * (total_steps - i)
-        sys.stdout.write(f"\r[{percent:3d}%|{bar}]")
-        sys.stdout.flush()
-        time.sleep(0.1)  # Simulate delay (you can adjust this to speed up or slow down)
-    sys.stdout.write("\n")  # Move to the next line after the bar
+# Print a loading bar
+def print_loading_bar(percentage):
+    bar_length = 40
+    block = int(round(bar_length * percentage))
+    progress = "█" * block + "-" * (bar_length - block)
+    print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to combine everything
+# Function to continuously scan and display networks
 def main():
     print_banner()
+    try:
+        while True:
+            # Simulate loading bar before displaying networks
+            for i in range(101):
+                print_loading_bar(i / 100)
+                time.sleep(0.05)
 
-    start_time = time.time()  # Record the start time
+            # Get and parse network data
+            networks = scan_networks()
+            parsed_networks = parse_networks(networks)
 
-    while True:
-        print("\nScanning for networks...")
-        show_loading_bar()  # Show loading bar animation
-        
-        scan_result = scan_networks()
-        
-        if scan_result:
-            networks = parse_networks(scan_result)
-            elapsed_time = time.time() - start_time  # Calculate elapsed time
-            print_networks(networks, elapsed_time)
-        
-        interface = get_user_input()  # Get the interface input (no BSSID input now)
-        
-        time.sleep(5)  # Wait before next scan
+            # Clear screen before printing new results
+            os.system("cls" if os.name == "nt" else "clear")
 
+            # Print the header
+            print(Fore.RED + "==== Available Networks ====")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'Channel':<8}{'Encryption':<15}{'RSSI'}")
+
+            # Print network details
+            for net in parsed_networks:
+                print(f"{net.get('BSSID', 'N/A'):<20}{net.get('ESSID', 'N/A'):<30}{net.get('Channel', 'N/A'):<8}{net.get('Encryption', 'N/A'):<15}{net.get('RSSI', 'N/A')}")
+
+            # Wait for a while before the next scan
+            time.sleep(10)
+
+    except KeyboardInterrupt:
+        print("\nExiting...")
+        exit()
+
+# Run the program
 if __name__ == "__main__":
     main()
