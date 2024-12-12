@@ -20,30 +20,22 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get the authentication method using netsh
-def get_auth_method():
+# Function to get network authentication methods using netsh (Windows only)
+def get_network_authentication():
     try:
-        # Run the netsh command to show networks and capture the output
-        result = subprocess.run(
-            ["netsh", "wlan", "show", "network"], 
-            capture_output=True, 
-            text=True, 
-            shell=True
-        )
-        
-        # Parse the output to find the authentication method
-        lines = result.stdout.splitlines()
-        auth_method = "Not Available"
-        for line in lines:
-            if "Authentication" in line:
-                auth_method = line.split(":")[1].strip()
-                break
-        
-        return auth_method
+        # Run the netsh command to show available networks and their authentication types
+        command = "netsh wlan show networks mode=bssid"
+        result = subprocess.check_output(command, shell=True, text=True)
 
-    except Exception as e:
-        print(Fore.RED + f"Error retrieving authentication method: {e}")
-        return "Error"
+        # Look for authentication details in the result
+        auth_methods = []
+        for line in result.splitlines():
+            if "Authentication" in line:
+                auth_methods.append(line.strip())
+        return auth_methods
+    except subprocess.CalledProcessError:
+        print(Fore.RED + "Failed to get authentication information.")
+        return []
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -66,7 +58,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID and signal strength
+# Main function to continuously scan and display networks with BSSID, signal strength, and authentication
 def main():
     print_banner()
     try:
@@ -78,16 +70,15 @@ def main():
 
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
+            # Get authentication methods from netsh
+            auth_methods = get_network_authentication()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
-            # Get the authentication method
-            auth_method = get_auth_method()
-
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Auth Method':<20}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'AUTHENTICATION'}")
 
             # Print network details
             if networks:
@@ -95,9 +86,16 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
+                    auth_method = "N/A"  # Default to "N/A" if no auth info is available
 
-                    # Display network details and the authentication method
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{auth_method:<20}")
+                    # Check if authentication info matches the network
+                    for auth in auth_methods:
+                        if ssid in auth:
+                            auth_method = auth.split(":")[-1].strip()
+                            break
+
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method}")
+
             else:
                 print(Fore.RED + "No networks found.")
 
