@@ -20,9 +20,9 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get encryption type using netsh for each network SSID
-def get_encryption_from_netsh(ssid):
-    print(f"Checking encryption for network: {ssid}")
+# Function to get encryption and authentication from netsh for each network SSID
+def get_encryption_and_auth_from_netsh(ssid):
+    print(f"Checking encryption and authentication for network: {ssid}")
     result = subprocess.run(
         ["netsh", "wlan", "show", "network", "name=" + ssid],
         capture_output=True,
@@ -30,15 +30,20 @@ def get_encryption_from_netsh(ssid):
     )
     
     if result.returncode != 0:
-        print(Fore.RED + f"Error: Unable to fetch encryption details for {ssid}.")
-        return "Unknown"
+        print(Fore.RED + f"Error: Unable to fetch encryption and authentication details for {ssid}.")
+        return "Unknown", "Unknown"
     
-    # Search for the encryption line in the netsh output
+    encryption = "Unknown"
+    authentication = "Unknown"
+    
+    # Search for encryption and authentication lines in the netsh output
     for line in result.stdout.split("\n"):
         if "Encryption" in line:
             encryption = line.split(":")[1].strip()
-            return encryption
-    return "Unknown"
+        elif "Authentication" in line:
+            authentication = line.split(":")[1].strip()
+    
+    return encryption, authentication
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -61,7 +66,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with encryption info
+# Main function to continuously scan and display networks with encryption and authentication info
 def main():
     print_banner()
     try:
@@ -79,7 +84,7 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'SSID':<30}{'Signal Strength':<15}{'Encryption'}")
+            print(Fore.GREEN + f"{'SSID':<30}{'Signal Strength':<15}{'Encryption':<15}{'Authentication'}")
 
             # Print network details
             if networks:
@@ -87,10 +92,10 @@ def main():
                     ssid = net.ssid
                     signal_strength = net.signal
                     
-                    # Get encryption type from netsh
-                    encryption = get_encryption_from_netsh(ssid)
+                    # Get encryption and authentication type from netsh
+                    encryption, authentication = get_encryption_and_auth_from_netsh(ssid)
 
-                    print(f"{ssid:<30}{signal_strength:<15}{encryption}")
+                    print(f"{ssid:<30}{signal_strength:<15}{encryption:<15}{authentication}")
             else:
                 print(Fore.RED + "No networks found.")
 
