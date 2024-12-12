@@ -35,13 +35,14 @@ def parse_networks(networks):
         parsed_networks.append(network_info)
     return parsed_networks
 
-# Display the banner in green
+# Display the banner in green with the antenna in red
 def print_banner():
     banner = f"""
-    {Fore.GREEN}.;'  ,;'             `;,  `;,   
+    {Fore.GREEN}.;'                     `;,    
+    .;'  ,;'             `;,  `;,  
     .;'  ,;'  ,;'     `;,  `;,  `;,  
     ::   ::   :   ( )   :   ::   ::  
-    ':   ':   ':  /_\\ ,:'  ,:'  ,:'  
+    {Fore.RED}':   ':   ':  /_\\ ,:'  ,:'  ,:'  
      ':   ':     /___\\    ,:'  ,:'   
       ':        /_____\\      ,:'     
                /       \\          
