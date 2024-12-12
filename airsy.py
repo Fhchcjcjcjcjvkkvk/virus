@@ -1,6 +1,7 @@
 import os
 import time
 import subprocess
+import argparse
 from pywifi import PyWiFi
 from colorama import Fore, init
 
@@ -8,16 +9,47 @@ from colorama import Fore, init
 init(autoreset=True)
 
 # Function to get available networks using pywifi
-def scan_networks_with_pywifi():
-    print(Fore.GREEN + "[Scanning for Networks using pywifi...]")
+def scan_networks_with_pywifi(interface):
+    print(Fore.GREEN + f"[Scanning for Networks on interface {interface}...]")
     
     wifi = PyWiFi()  # Create a PyWiFi object
-    iface = wifi.interfaces()[0]  # Get the first Wi-Fi interface (assuming it is the one used for scanning)
+    iface = wifi.interfaces()[interface]  # Get the specified Wi-Fi interface
 
     iface.scan()  # Start scanning for networks
     time.sleep(2)  # Give it some time to scan
     
     networks = iface.scan_results()  # Get the scan results
+    return networks
+
+# Function to get encryption type of networks using netsh
+def get_encryption_details():
+    print(Fore.GREEN + "[Getting Encryption Details using netsh...]")
+    
+    # Run the netsh command to get Wi-Fi network details with encryption information
+    command = "netsh wlan show networks mode=bssid"
+    result = subprocess.run(command, capture_output=True, text=True, shell=True)
+    
+    # Parse the result
+    networks = []
+    if result.returncode == 0:
+        output = result.stdout.split('\n')
+        network = {}
+        for line in output:
+            line = line.strip()
+            if "SSID" in line:
+                if network:
+                    networks.append(network)
+                network = {"SSID": line.split(":")[1].strip()}
+            elif "BSSID" in line:
+                network["BSSID"] = line.split(":")[1].strip()
+            elif "Signal" in line:
+                network["Signal"] = line.split(":")[1].strip()
+            elif "Encryption" in line:
+                network["Encryption"] = line.split(":")[1].strip()
+
+        if network:  # Add the last network
+            networks.append(network)
+    
     return networks
 
 # Display the banner in green with the antenna in red
@@ -41,8 +73,8 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID and signal strength
-def main():
+# Main function to continuously scan and display networks with BSSID, signal strength, and encryption
+def main(args):
     print_banner()
     try:
         while True:
@@ -52,14 +84,18 @@ def main():
                 time.sleep(0.05)
 
             # Get networks using pywifi
-            networks = scan_networks_with_pywifi()
+            networks = scan_networks_with_pywifi(args.interface)
+            encryption_details = get_encryption_details()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Encry':<15}")
+
+            # Create a dictionary for fast lookup of encryption details
+            encryption_dict = {net["SSID"]: net["Encryption"] for net in encryption_details}
 
             # Print network details
             if networks:
@@ -67,8 +103,9 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
+                    encryption_type = encryption_dict.get(ssid, "Unknown")
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{encryption_type}")
             else:
                 print(Fore.RED + "No networks found.")
 
@@ -79,6 +116,17 @@ def main():
         print("\nExiting...")
         exit()
 
+# Set up argument parser
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Airscan - A Wi-Fi scanner using pywifi.")
+    parser.add_argument(
+        "interface", 
+        type=int, 
+        help="Index of the Wi-Fi interface to use for scanning (e.g., 0 for the first interface, 1 for the second, etc.)."
+    )
+    return parser.parse_args()
+
 # Run the program
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(args)
