@@ -11,6 +11,11 @@ def scan_networks():
     print(Fore.GREEN + "[Scanning for Networks...]")
     # Run the Windows command to list available Wi-Fi networks
     result = subprocess.run(["netsh", "wlan", "show", "networks", "mode=bssid"], capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(Fore.RED + "Error: Unable to scan networks. Please ensure your Wi-Fi is enabled.")
+        return []
+
     networks = result.stdout.split("\n")
     return networks
 
@@ -18,21 +23,32 @@ def scan_networks():
 def parse_networks(networks):
     parsed_networks = []
     network_info = {}
+    
     for line in networks:
+        line = line.strip()
+        
         if "BSSID" in line:
+            # Store the previous network details before starting a new one
             if network_info:
                 parsed_networks.append(network_info)
             network_info = {"BSSID": line.split(":")[1].strip()}
+        
         elif "SSID" in line:
             network_info["ESSID"] = line.split(":")[1].strip()
+        
         elif "Channel" in line:
             network_info["Channel"] = line.split(":")[1].strip()
+        
         elif "Encryption" in line:
             network_info["Encryption"] = line.split(":")[1].strip()
+        
         elif "Signal" in line:
             network_info["RSSI"] = line.split(":")[1].strip()
+
+    # Add the last network found
     if network_info:
         parsed_networks.append(network_info)
+
     return parsed_networks
 
 # Display the banner in green with the antenna in red
@@ -68,6 +84,9 @@ def main():
 
             # Get and parse network data
             networks = scan_networks()
+            if not networks:
+                continue  # Skip iteration if no networks found or error occurs
+
             parsed_networks = parse_networks(networks)
 
             # Clear screen before printing new results
@@ -78,8 +97,11 @@ def main():
             print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'Channel':<8}{'Encryption':<15}{'RSSI'}")
 
             # Print network details
-            for net in parsed_networks:
-                print(f"{net.get('BSSID', 'N/A'):<20}{net.get('ESSID', 'N/A'):<30}{net.get('Channel', 'N/A'):<8}{net.get('Encryption', 'N/A'):<15}{net.get('RSSI', 'N/A')}")
+            if parsed_networks:
+                for net in parsed_networks:
+                    print(f"{net.get('BSSID', 'N/A'):<20}{net.get('ESSID', 'N/A'):<30}{net.get('Channel', 'N/A'):<8}{net.get('Encryption', 'N/A'):<15}{net.get('RSSI', 'N/A')}")
+            else:
+                print(Fore.RED + "No networks found.")
 
             # Wait for a while before the next scan
             time.sleep(10)
