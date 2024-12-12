@@ -31,6 +31,8 @@ def get_cipher_from_netsh(bssid):
         if bssid in result:
             lines = result.splitlines()
             cipher = "Unknown"
+            
+            # Try to find the 'Cipher' line and extract its value
             for line in lines:
                 if "Cipher" in line:
                     cipher = line.split(":")[1].strip()
