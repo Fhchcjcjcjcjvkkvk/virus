@@ -3,7 +3,6 @@ import time
 import subprocess
 from pywifi import PyWiFi
 from colorama import Fore, init
-import re
 
 # Initialize colorama
 init(autoreset=True)
@@ -21,36 +20,35 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get encryption (cipher) using netsh
-def get_netsh_info():
+# Function to get network details using netsh
+def get_network_security_details():
     try:
-        # Run the netsh command to get detailed network information
-        result = subprocess.run(['netsh', 'wlan', 'show', 'networks'], capture_output=True, text=True)
-
-        # Regex pattern to capture encryption (cipher) and extract types like WPA, WPA2, etc.
-        cipher_pattern = re.compile(r"Encryption\s*:\s*(\S+)")
-
-        # Parse the output for cipher
-        cipher = cipher_pattern.findall(result.stdout)
-
-        # Map common encryption types to their names
-        enc_map = {
-            "WEP": "WEP",
-            "WPA": "WPA",
-            "WPA2": "WPA2",
-            "WPA3": "WPA3",
-            "None": "OPN",  # For open networks with no encryption
-        }
-
-        enc_info = []
-        for cph in cipher:
-            # Return a human-readable encryption type or 'Unknown'
-            enc_info.append(enc_map.get(cph, "Unknown"))
+        # Run the netsh command to get network details
+        result = subprocess.check_output(["netsh", "wlan", "show", "networks", "mode=bssid"], text=True)
         
-        return enc_info
+        # Parse the result
+        networks_details = []
+        current_network = {}
 
-    except Exception as e:
-        print(Fore.RED + f"Error fetching cipher info: {e}")
+        for line in result.splitlines():
+            if "SSID" in line:
+                if current_network:
+                    networks_details.append(current_network)
+                current_network = {'SSID': line.split(":")[1].strip()}
+            elif "Authentication" in line:
+                current_network['Auth'] = line.split(":")[1].strip()
+            elif "Cipher" in line:
+                current_network['Cipher'] = line.split(":")[1].strip()
+            elif "Encryption" in line:
+                current_network['Encryption'] = line.split(":")[1].strip()
+
+        if current_network:
+            networks_details.append(current_network)
+
+        return networks_details
+
+    except subprocess.CalledProcessError as e:
+        print(Fore.RED + f"Error running netsh: {e}")
         return []
 
 # Display the banner in green with the antenna in red
@@ -74,7 +72,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, and cipher
+# Main function to continuously scan and display networks with BSSID and signal strength
 def main():
     print_banner()
     try:
@@ -87,27 +85,27 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
-            # Get cipher info using netsh
-            cipher = get_netsh_info()
+            # Get network security details using netsh
+            network_security_details = get_network_security_details()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'ENC':<10}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth':<20}{'Cipher':<15}{'ENC':<10}")
 
             # Print network details
-            if networks:
-                for idx, net in enumerate(networks):
+            if networks and network_security_details:
+                for net, security in zip(networks, network_security_details):
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
+                    auth = security.get('Auth', 'N/A')
+                    cipher = security.get('Cipher', 'N/A')
+                    encryption = security.get('Encryption', 'N/A')
 
-                    # Fetch the encryption type (if available)
-                    enc = cipher[idx] if idx < len(cipher) else "N/A"
-
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{enc:<10}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth:<20}{cipher:<15}{encryption:<10}")
             else:
                 print(Fore.RED + "No networks found.")
 
