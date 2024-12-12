@@ -20,38 +20,30 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get network security details using netsh
-def get_network_security_details():
-    try:
-        # Run the netsh command to get network details
-        result = subprocess.check_output(["netsh", "wlan", "show", "networks", "mode=bssid"], text=True)
-        
-        # Parse the result
-        networks_details = []
-        current_network = {}
-
-        for line in result.splitlines():
-            if "SSID" in line:
-                if current_network:
-                    networks_details.append(current_network)
-                current_network = {'SSID': line.split(":")[1].strip()}
-            elif "Authentication" in line:
-                current_network['Auth'] = line.split(":")[1].strip()
-            elif "Cipher" in line:
-                current_network['Cipher'] = line.split(":")[1].strip()
-            elif "Encryption" in line:
-                # The 'Encryption' line usually gives WPA/WPA2 etc.
-                encryption = line.split(":")[1].strip()
-                current_network['ENC'] = encryption
-
-        if current_network:
-            networks_details.append(current_network)
-
-        return networks_details
-
-    except subprocess.CalledProcessError as e:
-        print(Fore.RED + f"Error running netsh: {e}")
-        return []
+# Function to run netsh command and get network details (AUTH, CIPHER, ENC)
+def get_network_details():
+    result = subprocess.run(["netsh", "wlan", "show", "network"], capture_output=True, text=True)
+    output = result.stdout.splitlines()
+    
+    networks = []
+    network_info = {}
+    
+    for line in output:
+        if "SSID" in line:
+            if network_info:
+                networks.append(network_info)
+            network_info = {"SSID": line.split(":")[1].strip()}
+        elif "Authentication" in line:
+            network_info["AUTH"] = line.split(":")[1].strip()
+        elif "Cipher" in line:
+            network_info["CIPHER"] = line.split(":")[1].strip()
+        elif "Encryption" in line:
+            network_info["ENC"] = line.split(":")[1].strip()
+    
+    if network_info:
+        networks.append(network_info)
+    
+    return networks
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -86,28 +78,27 @@ def main():
 
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
-
-            # Get network security details using netsh
-            network_security_details = get_network_security_details()
+            
+            # Get detailed network information using netsh
+            network_details = get_network_details()
 
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth':<20}{'Cipher':<15}{'ENC':<10}")
+            print(Fore.GREEN + f"{'SSID':<30}{'AUTH':<20}{'CIPHER':<20}{'ENC':<20}{'PWR'}")
 
             # Print network details
-            if networks and network_security_details:
-                for net, security in zip(networks, network_security_details):
-                    bssid = net.bssid
+            if networks:
+                for i, net in enumerate(networks):
                     ssid = net.ssid
                     signal_strength = net.signal
-                    auth = security.get('Auth', 'N/A')
-                    cipher = security.get('Cipher', 'N/A')
-                    encryption = security.get('ENC', 'N/A')
+                    auth = network_details[i].get("AUTH", "N/A")
+                    cipher = network_details[i].get("CIPHER", "N/A")
+                    enc = network_details[i].get("ENC", "N/A")
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth:<20}{cipher:<15}{encryption:<10}")
+                    print(f"{ssid:<30}{auth:<20}{cipher:<20}{enc:<20}{signal_strength}")
             else:
                 print(Fore.RED + "No networks found.")
 
