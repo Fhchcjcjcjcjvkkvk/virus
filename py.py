@@ -57,6 +57,11 @@ def get_interface_index(interface_name):
     wifi = PyWiFi()
     interfaces = wifi.interfaces()
     
+    # Print all available interfaces and their names
+    print(Fore.YELLOW + "Available interfaces:")
+    for index, iface in enumerate(interfaces):
+        print(f"{index}: {iface.name}")
+
     # Look for the interface by name and return its index
     for index, iface in enumerate(interfaces):
         if iface.name == interface_name:
