@@ -8,26 +8,30 @@ from colorama import Fore, init
 init(autoreset=True)
 
 # Function to get authentication method using netsh for a given SSID
-def get_authentication_method(ssid):
+def get_authentication_method():
     try:
-        # Run the netsh command to get network information
-        command = 'netsh wlan show networks mode=Bssid'
+        # Run the netsh command to get network information (mode=Bssid shows more details)
+        command = 'netsh wlan show networks'
         result = subprocess.check_output(command, shell=True, text=True)
 
         # Split the result into individual network blocks
         networks = result.split("\n\n")
         
+        auth_methods = []
         for network in networks:
-            if f"SSID {ssid}" in network:
-                for line in network.splitlines():
-                    if "Authentication" in line:
-                        auth_method = line.split(":")[1].strip()
-                        return auth_method
-        return "Unknown"  # Default if no match found
+            auth_method = "Unknown"  # Default to "Unknown"
+            
+            # Parse the network block for Authentication method
+            for line in network.splitlines():
+                if "Authentication" in line:
+                    auth_method = line.split(":")[1].strip()
+                    auth_methods.append(auth_method)
+
+        return auth_methods
 
     except Exception as e:
         print(f"Error fetching authentication method: {e}")
-        return "Unknown"
+        return ["Unknown"]
 
 # Function to get available networks using pywifi
 def scan_networks_with_pywifi():
@@ -76,6 +80,9 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
+            # Get authentication methods using netsh
+            auth_methods = get_authentication_method()
+
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
@@ -85,11 +92,12 @@ def main():
 
             # Print network details
             if networks:
-                for net in networks:
+                for i, net in enumerate(networks):
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    auth_method = get_authentication_method(ssid)  # Get the authentication method using netsh
+                    # If there are more authentication methods than networks, we loop through them
+                    auth_method = auth_methods[i] if i < len(auth_methods) else "Unknown"
 
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{auth_method}")
             else:
