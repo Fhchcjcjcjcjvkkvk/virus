@@ -20,24 +20,21 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get network details using netsh (AUTH and CIPHER)
-def get_network_auth_cipher():
+# Function to get network details using netsh (AUTH)
+def get_network_auth():
     # Run netsh command to get network details
     result = subprocess.run(["netsh", "wlan", "show", "network"], capture_output=True, text=True)
     output = result.stdout
     
-    # Initialize auth and cipher variables
+    # Initialize auth variable
     auth_method = "Unknown"
-    cipher_suite = "Unknown"
 
-    # Parse the output to find AUTH and CIPHER details
+    # Parse the output to find AUTH details
     for line in output.splitlines():
         if "Authentication" in line:
             auth_method = line.split(":")[1].strip()
-        elif "Cipher" in line:
-            cipher_suite = line.split(":")[1].strip()
 
-    return auth_method, cipher_suite
+    return auth_method
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -78,7 +75,7 @@ def main():
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'AUTH':<15}{'CIPHER':<15}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'AUTH':<15}")
 
             # Print network details
             if networks:
@@ -87,10 +84,10 @@ def main():
                     ssid = net.ssid
                     signal_strength = net.signal
                     
-                    # Get the authentication method and cipher suite
-                    auth_method, cipher_suite = get_network_auth_cipher()
+                    # Get the authentication method
+                    auth_method = get_network_auth()
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{auth_method:<15}{cipher_suite:<15}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{auth_method:<15}")
             else:
                 print(Fore.RED + "No networks found.")
 
