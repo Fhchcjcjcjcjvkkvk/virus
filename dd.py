@@ -79,10 +79,10 @@ def main():
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
-            print(Fore.RED + "==== Available Networks ====")
+            print(Fore.RED + "==== Available Networks with CCMP Cipher ====")
             print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Cipher':<20}")
 
-            # Print network details
+            # Print network details only for networks with CCMP cipher
             if networks:
                 for idx, net in enumerate(networks):
                     bssid = net.bssid
@@ -92,7 +92,9 @@ def main():
                     # Fetch the cipher (if available)
                     cip = cipher[idx] if idx < len(cipher) else "N/A"
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cip:<20}")
+                    # Only display networks using CCMP cipher
+                    if cip == "CCMP":
+                        print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cip:<20}")
             else:
                 print(Fore.RED + "No networks found.")
 
