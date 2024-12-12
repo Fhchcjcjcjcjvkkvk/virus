@@ -31,8 +31,21 @@ def get_network_authentication():
         for line in result.splitlines():
             if "Authentication" in line:
                 auth_method = line.split(":")[1].strip()
-                break
-        return auth_method
+
+                # Check and return specific authentication methods
+                if "WPA3" in auth_method:
+                    return "WPA3"
+                elif "WPA2" in auth_method:
+                    return "WPA2"
+                elif "WPA" in auth_method:
+                    return "WPA"
+                elif "WEP" in auth_method:
+                    return "WEP"
+                elif "Open" in auth_method:
+                    return "Open"
+                else:
+                    return auth_method
+        return "Unknown"  # If the method is not found
     except subprocess.CalledProcessError:
         return None
 
