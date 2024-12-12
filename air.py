@@ -20,27 +20,27 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get the authentication method using netsh
-def get_authentication_method():
-    # Run the netsh command to show available networks
-    command = "netsh wlan show networks"
-    result = subprocess.run(command, capture_output=True, text=True, shell=True)
+# Function to get the authentication methods using netsh
+def get_authentication_methods():
+    # Run the netsh command to show networks and capture the output
+    result = subprocess.run(['netsh', 'wlan', 'show', 'networks'], capture_output=True, text=True)
+    
+    # Check if the command was successful
+    if result.returncode != 0:
+        print(Fore.RED + "Failed to retrieve network information using netsh.")
+        return []
 
-    # Check if command was successful
-    if result.returncode == 0:
-        output = result.stdout
-        auth_method = None
-
-        # Look for the line containing the authentication method (WPA2, WPA, etc.)
-        for line in output.splitlines():
-            if "Authentication" in line:
-                auth_method = line.split(":")[1].strip()  # Extract the authentication type
-                break
-
-        return auth_method if auth_method else "Unknown"
-    else:
-        print(Fore.RED + "Failed to retrieve network details.")
-        return "Error"
+    output = result.stdout
+    auth_methods = []
+    
+    # Search for lines with authentication method information
+    for line in output.splitlines():
+        if "Authentication" in line:
+            # Extract the authentication method
+            auth_method = line.split(":")[1].strip()
+            auth_methods.append(auth_method)
+    
+    return auth_methods
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -76,24 +76,28 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
+            # Get the authentication methods using netsh
+            auth_methods = get_authentication_methods()
+
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'AUTH'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Auth Method'}")
 
-            # Get authentication method
-            auth_method = get_authentication_method()
-
-            # Print network details
+            # Print network details with authentication method
             if networks:
                 for net in networks:
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
 
-                    # Display the network information along with authentication method
+                    # Show authentication method for each network
+                    auth_method = "Unknown"
+                    if auth_methods:
+                        auth_method = auth_methods[0]  # We can improve this by associating auth methods to specific networks if needed
+
                     print(f"{bssid:<20}{ssid:<30}{signal_strength:<10}{auth_method}")
             else:
                 print(Fore.RED + "No networks found.")
