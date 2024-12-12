@@ -3,7 +3,6 @@ import time
 import subprocess
 from pywifi import PyWiFi
 from colorama import Fore, init
-import re
 
 # Initialize colorama
 init(autoreset=True)
@@ -20,23 +19,6 @@ def scan_networks_with_pywifi():
     
     networks = iface.scan_results()  # Get the scan results
     return networks
-
-# Function to get cipher using netsh
-def get_netsh_info():
-    try:
-        # Run the netsh command to get detailed network information
-        result = subprocess.run(['netsh', 'wlan', 'show', 'networks'], capture_output=True, text=True)
-
-        # Regex pattern to capture cipher
-        cipher_pattern = re.compile(r"Cipher\s*:\s*(\S+)")
-
-        # Parse the output for cipher
-        cipher = cipher_pattern.findall(result.stdout)
-
-        return cipher
-    except Exception as e:
-        print(Fore.RED + f"Error fetching cipher info: {e}")
-        return []
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -59,7 +41,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, ESSID, signal strength, and cipher
+# Main function to continuously scan and display networks with BSSID, signal strength, and encryption
 def main():
     print_banner()
     try:
@@ -72,29 +54,36 @@ def main():
             # Get networks using pywifi
             networks = scan_networks_with_pywifi()
 
-            # Get cipher info using netsh
-            cipher = get_netsh_info()
-
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
             # Print the header
-            print(Fore.RED + "==== Available Networks with CCMP Cipher ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Cipher':<20}")
+            print(Fore.RED + "==== Available Networks ====")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Encryption'}")
 
-            # Print network details only for networks with CCMP cipher
+            # Print network details
             if networks:
-                for idx, net in enumerate(networks):
+                for net in networks:
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
+                    encryption = net.encryption
 
-                    # Fetch the cipher (if available)
-                    cip = cipher[idx] if idx < len(cipher) else "N/A"
+                    # Convert encryption code to readable text
+                    if encryption == 0:
+                        encryption_type = "Open"
+                    elif encryption == 1:
+                        encryption_type = "WEP"
+                    elif encryption == 2:
+                        encryption_type = "WPA"
+                    elif encryption == 3:
+                        encryption_type = "WPA2"
+                    elif encryption == 4:
+                        encryption_type = "WPA/WPA2"
+                    else:
+                        encryption_type = "Unknown"
 
-                    # Only display networks using CCMP cipher
-                    if cip == "CCMP":
-                        print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{cip:<20}")
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{encryption_type}")
             else:
                 print(Fore.RED + "No networks found.")
 
