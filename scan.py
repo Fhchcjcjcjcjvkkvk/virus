@@ -20,28 +20,30 @@ def scan_networks_with_pywifi():
     networks = iface.scan_results()  # Get the scan results
     return networks
 
-# Function to get authentication methods using netsh on Windows
-def get_authentication_method(bssid):
+# Function to get the authentication method using netsh
+def get_auth_method():
     try:
-        # Run the netsh command to show networks
-        cmd = ['netsh', 'wlan', 'show', 'network', 'mode=bssid']
-        result = subprocess.check_output(cmd, universal_newlines=True)
+        # Run the netsh command to show networks and capture the output
+        result = subprocess.run(
+            ["netsh", "wlan", "show", "network"], 
+            capture_output=True, 
+            text=True, 
+            shell=True
+        )
         
-        # Split the result into lines and look for the relevant information
-        lines = result.splitlines()
-        auth_method = None
+        # Parse the output to find the authentication method
+        lines = result.stdout.splitlines()
+        auth_method = "Not Available"
         for line in lines:
-            if "BSSID" in line and bssid in line:
-                # Get the authentication method
-                for next_line in lines[lines.index(line):]:
-                    if "Authentication" in next_line:
-                        auth_method = next_line.split(":")[1].strip()
-                        break
+            if "Authentication" in line:
+                auth_method = line.split(":")[1].strip()
                 break
+        
+        return auth_method
 
-        return auth_method if auth_method else "Unknown"
-    except subprocess.CalledProcessError:
-        return "Error fetching authentication method"
+    except Exception as e:
+        print(Fore.RED + f"Error retrieving authentication method: {e}")
+        return "Error"
 
 # Display the banner in green with the antenna in red
 def print_banner():
@@ -64,7 +66,7 @@ def print_loading_bar(percentage):
     progress = "█" * block + "-" * (bar_length - block)
     print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
 
-# Main function to continuously scan and display networks with BSSID, signal strength, and authentication method
+# Main function to continuously scan and display networks with BSSID and signal strength
 def main():
     print_banner()
     try:
@@ -80,9 +82,12 @@ def main():
             # Clear screen before printing new results
             os.system("cls" if os.name == "nt" else "clear")
 
+            # Get the authentication method
+            auth_method = get_auth_method()
+
             # Print the header
             print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Auth Method'}")
+            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<5}{'Auth Method':<20}")
 
             # Print network details
             if networks:
@@ -90,9 +95,9 @@ def main():
                     bssid = net.bssid
                     ssid = net.ssid
                     signal_strength = net.signal
-                    auth_method = get_authentication_method(bssid)
 
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{auth_method}")
+                    # Display network details and the authentication method
+                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<5}{auth_method:<20}")
             else:
                 print(Fore.RED + "No networks found.")
 
