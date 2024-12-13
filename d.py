@@ -5,7 +5,8 @@ from collections import defaultdict
 
 # Function to process each packet
 def packet_handler(pkt):
-    # We are only interested in Beacon frames (type 0 and subtype 8)
+    # Print every packet (to see if it's being captured)
+    print(pkt.summary())  # This will print a summary of every packet
     if pkt.haslayer(Dot11Beacon):
         essid = pkt[Dot11].info.decode(errors="ignore")
         if essid != "":
