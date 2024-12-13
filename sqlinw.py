@@ -9,6 +9,24 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+# Initialize the database with a sample user if it doesn't exist
+def init_db():
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL
+        )
+    ''')
+    c.execute("INSERT OR IGNORE INTO users (username, password) VALUES ('test', 'password123')")
+    conn.commit()
+    conn.close()
+
+# Initialize the DB when the app starts
+init_db()
+
 # Route for displaying the login page
 @app.route('/')
 def login():
