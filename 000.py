@@ -38,7 +38,7 @@ def packet_handler(packet):
                 print(f"Station {station_mac} confirmed associated with AP {bssid}")
 
 # Start sniffing on the wireless interface (monitor mode required)
-def start_sniffing(interface="wlan0"):
+def start_sniffing(interface="WiFi"):
     print(f"Sniffing on {interface}...")
     sniff(iface=interface, prn=packet_handler, store=0)
 
