@@ -1,7 +1,11 @@
 import pyshark
 import argparse
+from colorama import init, Fore
 
 def main():
+    # Initialize colorama
+    init(autoreset=True)
+    
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="A simple network sniffer to display HTTP and DNS requests.")
     parser.add_argument("-i", "--interface", required=True, help="The network interface to sniff on.")
@@ -15,16 +19,15 @@ def main():
         # Process each packet
         for packet in capture.sniff_continuously():
             try:
-                print("\n--- Packet Captured ---")
                 if 'http' in packet:
-                    print("HTTP Request:")
+                    print("\n" + Fore.RED + "--- HTTP Packet Captured ---")
                     print(f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
                     print(f"Request: {packet.http.request_method} {packet.http.host}{packet.http.request_uri}")
                     print(f"User-Agent: {packet.http.get('User-Agent', 'N/A')}")
                     if packet.http.request_method == "POST" and hasattr(packet.http, 'file_data'):
                         print(f"Form Data: {packet.http.file_data}")
                 elif 'dns' in packet:
-                    print("DNS Request:")
+                    print("\n" + Fore.GREEN + "--- DNS Packet Captured ---")
                     if hasattr(packet.dns, 'qry_name'):
                         print(f"Query: {packet.dns.qry_name}")
                     else:
