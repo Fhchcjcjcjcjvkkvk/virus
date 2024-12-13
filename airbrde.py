@@ -1,5 +1,5 @@
 import argparse
-from scapy.all import ARP, Ether, sendp, get_if_hwaddr
+from scapy.all import ARP, Ether, sendp, srp, get_if_hwaddr
 import time
 
 def get_mac(ip):
