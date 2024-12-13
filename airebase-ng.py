@@ -1,84 +1,47 @@
-import argparse
-import os
 import time
-from scapy.all import sniff, Dot11
-from prettytable import PrettyTable
+import scapy.all as scapy
+from scapy.layers.dot11 import Dot11, Dot11Beacon
+from collections import defaultdict
 
-def capture_packets(interface, beacon_count):
-    """
-    Sniffs packets on the specified interface and displays beacon information in a table format.
+# Function to process each packet
+def packet_handler(pkt):
+    # We are only interested in Beacon frames (type 0 and subtype 8)
+    if pkt.haslayer(Dot11Beacon):
+        essid = pkt[Dot11].info.decode(errors="ignore")
+        if essid != "":
+            # Increment the beacon count for this ESSID
+            beacon_counts[essid] += 1
 
-    :param interface: The interface to capture packets from.
-    :param beacon_count: The number of beacon frames to capture before stopping.
-    """
-    beacon_stats = {}
-    total_beacons = 0
+# Function to start sniffing
+def sniff_wifi(interface):
+    print("Starting packet sniffing on interface:", interface)
+    scapy.sniff(iface=interface, prn=packet_handler, store=0)
 
-    def packet_handler(packet):
-        nonlocal total_beacons
-        # Check if the packet has a Dot11 layer and is a beacon frame
-        if packet.haslayer(Dot11) and packet.type == 0 and packet.subtype == 8:
-            bssid = packet.addr2
-            ssid = packet.info.decode(errors='ignore') if packet.info else "<Hidden SSID>"
+# Function to display the ESSID and beacon counts live
+def display_counts():
+    while True:
+        # Clear the console (works on Windows, may vary on other systems)
+        print("\033[H\033[J", end="")
+        print("ESSID\t\t\tBeacon Count")
+        print("-" * 40)
+        # Print each ESSID with its beacon count
+        for essid, count in beacon_counts.items():
+            print(f"{essid}\t\t{count}")
+        time.sleep(1)
 
-            if bssid not in beacon_stats:
-                beacon_stats[bssid] = {
-                    'SSID': ssid,
-                    'Beacons': 0,
-                    'Data': 0
-                }
-
-            # Increment the beacon count
-            beacon_stats[bssid]['Beacons'] += 1
-            total_beacons += 1
-
-            # Live update table
-            update_table(beacon_stats)
-
-        # Check if the packet is a data packet
-        if packet.haslayer(Dot11) and packet.type == 2:
-            bssid = packet.addr2
-            if bssid in beacon_stats:
-                beacon_stats[bssid]['Data'] += 1
-
-        # Stop sniffing when the target beacon count is reached
-        if total_beacons >= beacon_count:
-            return True
-
-    print(f"Starting sniffing on {interface}. Capturing beacons up to {beacon_count}...")
-
-    try:
-        sniff(iface=interface, prn=packet_handler, stop_filter=lambda x: total_beacons >= beacon_count)
-    except PermissionError:
-        print("Error: Insufficient permissions. Please run this script as Administrator.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-    # Final display of results after sniffing stops
-    print("\nFinal results after capturing the specified number of beacons:")
-    update_table(beacon_stats)
-
-def update_table(beacon_stats):
-    """
-    Update and print the beacon statistics in a table format.
-    
-    :param beacon_stats: The dictionary containing beacon statistics.
-    """
-    os.system('cls' if os.name == 'nt' else 'clear')  # Clear the screen for live updates
-    table = PrettyTable()
-    table.field_names = ["BSSID", "SSID", "Beacons", "Data"]
-
-    for bssid, stats in beacon_stats.items():
-        table.add_row([bssid, stats['SSID'], stats['Beacons'], stats['Data']])
-
-    print(table)
-    time.sleep(1)  # Add a small delay to make it visible to the user
-
+# Main function
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Capture Wi-Fi beacon frames and display network statistics.")
-    parser.add_argument("-i", "--interface", required=True, help="The name of the network interface to use for sniffing.")
-    parser.add_argument("--count-beacons", type=int, default=10, help="The number of beacon frames to capture before stopping (default: 10).")
+    # Specify the network interface (example: 'wlan0' or 'Wi-Fi')
+    interface = input("Enter the interface name (e.g., Wi-Fi): ").strip()
+    beacon_counts = defaultdict(int)
 
-    args = parser.parse_args()
+    # Start packet sniffing and displaying counts in separate threads
+    from threading import Thread
+    sniff_thread = Thread(target=sniff_wifi, args=(interface,))
+    display_thread = Thread(target=display_counts)
 
-    capture_packets(args.interface, args.count_beacons)
+    sniff_thread.start()
+    display_thread.start()
+
+    sniff_thread.join()
+    display_thread.join()
