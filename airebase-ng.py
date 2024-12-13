@@ -1,4 +1,6 @@
 import argparse
+import os
+import time
 from scapy.all import sniff, Dot11
 from prettytable import PrettyTable
 
@@ -42,6 +44,9 @@ def capture_packets(interface, beacon_count):
         if total_beacons >= beacon_count:
             return True
 
+        # Display live table after each packet
+        update_table(beacon_stats)
+
     print(f"Starting sniffing on {interface}. Waiting for {beacon_count} beacon frames...")
 
     try:
@@ -51,13 +56,25 @@ def capture_packets(interface, beacon_count):
     except Exception as e:
         print(f"An error occurred: {e}")
 
-    # Display the results in a table
+    # Final display of results after sniffing stops
+    print("\nFinal results after capturing the specified number of beacons:")
+    update_table(beacon_stats)
+
+def update_table(beacon_stats):
+    """
+    Update and print the beacon statistics in a table format.
+    
+    :param beacon_stats: The dictionary containing beacon statistics.
+    """
+    os.system('cls' if os.name == 'nt' else 'clear')  # Clear the screen for live updates
     table = PrettyTable()
     table.field_names = ["BSSID", "SSID", "Beacons", "Data"]
+
     for bssid, stats in beacon_stats.items():
         table.add_row([bssid, stats['SSID'], stats['Beacons'], stats['Data']])
 
     print(table)
+    time.sleep(0.5)  # Add a small delay to make it visible to the user
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture Wi-Fi beacon frames and display network statistics.")
