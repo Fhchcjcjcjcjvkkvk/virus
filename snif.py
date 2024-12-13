@@ -1,48 +1,46 @@
-import sys
 import time
-from scapy.all import *
+import scapy.all as scapy
+from scapy.layers.dot11 import Dot11, Dot11Beacon
+from collections import defaultdict
+from threading import Thread
 
-# Function to count beacons per ESSID
-def process_packet(packet, essid_dict):
-    if packet.haslayer(Dot11):
-        # Check if the packet is a beacon frame (type = 0, subtype = 8)
-        if packet.type == 0 and packet.subtype == 8:
-            essid = packet[Dot11Beacon].network_stats().get('essid', None)
-            if essid:
-                if essid not in essid_dict:
-                    essid_dict[essid] = 0
-                essid_dict[essid] += 1
+# Function to process each packet
+def packet_handler(pkt):
+    if pkt.haslayer(Dot11Beacon):
+        essid = pkt[Dot11].info.decode(errors="ignore")
+        if essid != "":
+            # Increment the beacon count for this ESSID
+            beacon_counts[essid] += 1
 
-# Function to print the live table of ESSIDs and beacon counts
-def print_live(essid_dict):
-    # Clear the screen (for live update)
-    print("\033c", end="")
-    print(f"{'ESSID':<35}{'Beacons'}")
-    print("-" * 45)
-    
-    for essid, count in essid_dict.items():
-        print(f"{essid:<35}{count}")
+# Function to start sniffing
+def sniff_wifi(interface):
+    print("Starting packet sniffing on interface:", interface)
+    scapy.sniff(iface=interface, prn=packet_handler, store=0)
 
-# Main function to start sniffing
-def start_sniffing(interface):
-    # Dictionary to store ESSID -> beacon count
-    essid_dict = {}
+# Function to display the ESSID and beacon counts live
+def display_counts():
+    while True:
+        # Clear the console (works on Windows, may vary on other systems)
+        print("\033[H\033[J", end="")  # This clears the console screen
+        print("ESSID\t\t\tBeacon Count")
+        print("-" * 40)
+        # Print each ESSID with its beacon count in columns
+        for essid, count in beacon_counts.items():
+            print(f"{essid}\t\t{count}")
+        time.sleep(1)
 
-    print(f"Sniffing on interface {interface}...\n")
-    print_live(essid_dict)
-
-    # Start sniffing indefinitely
-    sniff(iface=interface, prn=lambda packet: process_packet(packet, essid_dict), store=0)
-
-# Main entry point
+# Main function
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] != '-i':
-        print("Usage: python airsniff.py -i <interface>")
-        sys.exit(1)
+    # Specify the network interface (example: 'wlan0' or 'Wi-Fi')
+    interface = input("Enter the interface name (e.g., Wi-Fi): ").strip()
+    beacon_counts = defaultdict(int)
 
-    interface = sys.argv[2]
+    # Start packet sniffing and displaying counts in separate threads
+    sniff_thread = Thread(target=sniff_wifi, args=(interface,))
+    display_thread = Thread(target=display_counts)
 
-    try:
-        start_sniffing(interface)
-    except Exception as e:
-        print(f"Error: {e}")
+    sniff_thread.start()
+    display_thread.start()
+
+    sniff_thread.join()
+    display_thread.join()
