@@ -10,7 +10,7 @@ def banner():
     reset = Style.RESET_ALL
 
     syringe = f"""
-       {yellow}______{reset}
+       {yellow}_____{reset}
        {yellow}__H__{reset}
         ["]
         [)] 
