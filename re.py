@@ -1,80 +1,63 @@
-from flask import Flask, request
+from flask import Flask, request, render_template_string
 import sqlite3
 
 app = Flask(__name__)
 
-# Function to simulate a connection to the database
-def get_db_connection():
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
+# Create a simple SQLite database
+def init_db():
+    conn = sqlite3.connect('database.db')  # Use a file-based database for Replit
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT, password TEXT)''')
+    cursor.execute(\"INSERT OR IGNORE INTO users (username, password) VALUES ('admin', 'password123')\")
+    conn.commit()
     return conn
 
-# Initialize the database with a sample user if it doesn't exist
-def init_db():
-    conn = sqlite3.connect('database.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            password TEXT NOT NULL
-        )
-    ''')
-    c.execute("INSERT OR IGNORE INTO users (username, password) VALUES ('test', 'password123')")
-    conn.commit()
-    conn.close()
+db_connection = init_db()
 
-# Initialize the DB when the app starts
-init_db()
-
-# Route for displaying the login page
-@app.route('/')
+# Vulnerable login page route
+@app.route('/', methods=['GET', 'POST'])
 def login():
-    return '''
+    message = ""
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        # WARNING: This query is vulnerable to SQL injection
+        query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'\"
+
+        cursor = db_connection.cursor()
+        cursor.execute(query)
+        user = cursor.fetchone()
+
+        if user:
+            message = \"Login successful! Welcome, {}.\".format(user[0])
+        else:
+            message = \"Login failed! Invalid credentials.\"
+
+    # HTML template with a login form
+    html = \"\"\"
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Login</title>
-        <style>
-            body { font-family: Arial, sans-serif; padding: 50px; }
-            .login-container { width: 300px; margin: 0 auto; padding: 20px; border: 1px solid #ccc; }
-            input { width: 100%; padding: 10px; margin: 10px 0; }
-            button { width: 100%; padding: 10px; background-color: #4CAF50; color: white; border: none; }
-        </style>
+        <title>Login Page</title>
     </head>
     <body>
-        <div class="login-container">
-            <h2>Login</h2>
-            <form action="/login" method="POST">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-                <button type="submit">Login</button>
-            </form>
-        </div>
+        <h1>Login</h1>
+        <form method=\"POST\">
+            <label for=\"username\">Username:</label>
+            <input type=\"text\" id=\"username\" name=\"username\"><br>
+
+            <label for=\"password\">Password:</label>
+            <input type=\"password\" id=\"password\" name=\"password\"><br>
+
+            <button type=\"submit\">Login</button>
+        </form>
+        <p>{{ message }}</p>
     </body>
     </html>
-    '''
+    \"\"\"
 
-# Route to handle login form submission
-@app.route('/login', methods=['POST'])
-def check_login():
-    username = request.form['username']
-    password = request.form['password']
-    
-    # Vulnerable SQL query (SQL Injection vulnerability here)
-    conn = get_db_connection()
-    query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
-    user = conn.execute(query).fetchone()
+    return render_template_string(html, message=message)
 
-    if user:
-        return f"Welcome, {username}!"
-    else:
-        return "Login failed. Invalid username or password."
-
-# Replit needs to use this to bind the app to a public URL
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3000)
+    app.run(host='0.0.0.0', port=8080)  # Required for Replit
