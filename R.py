@@ -1,38 +1,43 @@
-from scapy.all import *
-import re
+import pyshark
+import argparse
+from colorama import init, Fore
 
-# Function to handle each packet
-def handle_packet(packet):
-    # Check if the packet is a Beacon Frame (IEEE 802.11 management frame type)
-    if packet.haslayer(Dot11Beacon):
-        # Extract BSSID (MAC address of the AP)
-        bssid = packet[Dot11].addr3
+def main():
+    # Initialize colorama
+    init(autoreset=True)
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="A simple network sniffer to display HTTP and DNS requests.")
+    parser.add_argument("-i", "--interface", required=True, help="The network interface to sniff on.")
+    args = parser.parse_args()
 
-        # Extract the "Information Elements" which contain the Authentication Type
-        info_elements = packet[Dot11Beacon].info
-        auth_protocol = None
+    # Start live capture on the specified interface
+    try:
+        print(f"Starting capture on interface: {args.interface}")
+        capture = pyshark.LiveCapture(interface=args.interface, display_filter="http or dns")
 
-        # Check if we can extract the Authentication protocol
-        if b"RSN" in info_elements:
-            auth_protocol = "WPA/WPA2 (RSN)"
-        elif b"WPA" in info_elements:
-            auth_protocol = "WPA"
-        elif b"Open" in info_elements:
-            auth_protocol = "Open"
-        else:
-            auth_protocol = "Unknown"
+        # Process each packet
+        for packet in capture.sniff_continuously():
+            try:
+                if 'http' in packet:
+                    print("\n" + Fore.RED + "--- HTTP Packet Captured ---")
+                    print(f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
+                    print(f"Request: {packet.http.request_method} {packet.http.host}{packet.http.request_uri}")
+                    print(f"User-Agent: {packet.http.get('User-Agent', 'N/A')}")
+                    if packet.http.request_method == "POST" and hasattr(packet.http, 'file_data'):
+                        print(f"Form Data: {packet.http.file_data}")
+                elif 'dns' in packet:
+                    print("\n" + Fore.GREEN + "--- DNS Packet Captured ---")
+                    if hasattr(packet.dns, 'qry_name'):
+                        print(f"Query: {packet.dns.qry_name}")
+                    else:
+                        print("No DNS query name found.")
+            except AttributeError as e:
+                print(f"Packet error: {e}")
+    except KeyboardInterrupt:
+        print("\nCapture stopped.")
+    except Exception as e:
+        print(f"Error: {e}")
 
-        # Print the BSSID and Authentication Protocol
-        print(f"BSSID: {bssid}, Authentication: {auth_protocol}")
-
-# Main function to read packets from a pcap file
-def analyze_pcap(file_path):
-    print(f"Analyzing pcap file: {file_path}...")
-    packets = rdpcap(file_path)  # Read packets from pcap file
-    for packet in packets:
-        handle_packet(packet)
-
-# Run the analysis with the path to the .pcap file
 if __name__ == "__main__":
-    pcap_file = "capture.pcap"  # Replace with your capture file
-    analyze_pcap(pcap_file)
+    main()
