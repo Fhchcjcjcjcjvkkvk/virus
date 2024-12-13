@@ -1,131 +1,48 @@
-import os
-import time
-import subprocess
-from pywifi import PyWiFi
-from colorama import Fore, init
+from scapy.all import *
+from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeReq, Dot11ProbeResp, RadioTap
 
-# Initialize colorama
-init(autoreset=True)
+# To hold the discovered stations and APs
+associated_stations = {}
 
-# Function to get available networks using pywifi
-def scan_networks_with_pywifi():
-    print(Fore.GREEN + "[Scanning for Networks using pywifi...]")
-    
-    wifi = PyWiFi()  # Create a PyWiFi object
-    iface = wifi.interfaces()[0]  # Get the first Wi-Fi interface (assuming it is the one used for scanning)
+# Define a function to process the packets
+def packet_handler(packet):
+    if packet.haslayer(Dot11):
+        # Capture beacon frames (APs broadcasting their information)
+        if packet.type == 0 and packet.subtype == 8:  # Beacon frame
+            bssid = packet[Dot11].addr3  # BSSID (AP's MAC address)
+            ssid = packet[Dot11Beacon].info.decode(errors="ignore")  # SSID
+            print(f"AP found: BSSID={bssid} SSID={ssid}")
+        
+        # Capture probe request frames (stations searching for APs)
+        elif packet.type == 0 and packet.subtype == 4:  # Probe Request frame
+            station_mac = packet[Dot11].addr2  # Source MAC address (station searching)
+            print(f"Station searching: MAC={station_mac} (not associated)")
 
-    iface.scan()  # Start scanning for networks
-    time.sleep(2)  # Give it some time to scan
-    
-    networks = iface.scan_results()  # Get the scan results
-    return networks
+        # Capture probe response frames (APs responding to probe requests)
+        elif packet.type == 0 and packet.subtype == 5:  # Probe Response frame
+            bssid = packet[Dot11].addr3  # BSSID (AP's MAC address)
+            ssid = packet[Dot11Beacon].info.decode(errors="ignore")  # SSID
+            print(f"Probe response: BSSID={bssid} SSID={ssid}")
+            
+        # Handle association frames (show stations associated with APs)
+        elif packet.type == 1 and packet.subtype == 0:  # Association Request frame
+            station_mac = packet[Dot11].addr2  # Source MAC address (station trying to associate)
+            bssid = packet[Dot11].addr3  # BSSID (AP's MAC address)
+            associated_stations[station_mac] = bssid  # Track association
+            print(f"Station associated: MAC={station_mac} BSSID={bssid}")
 
-# Function to get the authentication and encryption method using netsh (for Windows)
-def get_network_authentication_and_encryption():
-    command = "netsh wlan show networks mode=bssid"
-    result = subprocess.run(command, capture_output=True, text=True, shell=True)
-    
-    if result.returncode != 0:
-        print("Error scanning networks with netsh.")
-        return []
+        elif packet.type == 1 and packet.subtype == 1:  # Association Response frame
+            station_mac = packet[Dot11].addr2  # Source MAC address (station)
+            bssid = packet[Dot11].addr3  # BSSID (AP's MAC address)
+            if station_mac in associated_stations:
+                print(f"Station {station_mac} confirmed associated with AP {bssid}")
 
-    output = result.stdout
-    networks = output.split("\n")
-    
-    network_details = []
-    
-    ssid = ""
-    auth_type = ""
-    encryption = ""
-    
-    for line in networks:
-        if "SSID" in line:
-            ssid = line.split(":")[1].strip()
-        if "Authentication" in line:
-            auth_type = line.split(":")[1].strip()
-        if "Encryption" in line:
-            encryption = line.split(":")[1].strip()
-        if "BSSID" in line:
-            bssid = line.split(":")[1].strip()
-        if "Signal" in line:
-            signal_strength = line.split(":")[1].strip()
-            # Append the details for each network once all info is collected
-            network_details.append({
-                "BSSID": bssid,
-                "SSID": ssid,
-                "Signal": signal_strength,
-                "Authentication": auth_type,
-                "Encryption": encryption
-            })
-    
-    return network_details
+# Start sniffing on the wireless interface (monitor mode required)
+def start_sniffing(interface="wlan0"):
+    print(f"Sniffing on {interface}...")
+    sniff(iface=interface, prn=packet_handler, store=0)
 
-# Display the banner in green with the antenna in red
-def print_banner():
-    banner = f"""
-    {Fore.GREEN}.;'                     ;,    
-    .;'  ,;'             ;,  ;,  
-    .;'  ,;'  ,;'     ;,  ;,  ;,  
-    ::   ::   :   ( )   :   ::   ::  
-    {Fore.RED}':   ':   ':  /_\\ ,:'  ,:'  ,:'  
-     ':   ':     /___\\    ,:'  ,:'   
-      ':        /_____\\      ,:'     
-               /       \\          
-    """
-    print(banner)
-
-# Print a loading bar
-def print_loading_bar(percentage):
-    bar_length = 40
-    block = int(round(bar_length * percentage))
-    progress = "█" * block + "-" * (bar_length - block)
-    print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
-
-# Main function to continuously scan and display networks with BSSID and signal strength
-def main():
-    print_banner()
-    try:
-        while True:
-            # Simulate loading bar before displaying networks
-            for i in range(101):
-                print_loading_bar(i / 100)
-                time.sleep(0.05)
-
-            # Get networks using pywifi
-            networks = scan_networks_with_pywifi()
-
-            # Get authentication and encryption methods using netsh
-            network_details = get_network_authentication_and_encryption()
-
-            # Clear screen before printing new results
-            os.system("cls" if os.name == "nt" else "clear")
-
-            # Print the header
-            print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<10}{'Authentication':<20}{'Encryption'}")
-
-            # Print network details using pywifi and netsh
-            if networks:
-                for net in networks:
-                    bssid = net.bssid
-                    ssid = net.ssid
-                    signal_strength = net.signal
-                    
-                    # Match network info from pywifi with netsh details
-                    for details in network_details:
-                        if details['SSID'] == ssid:  # Match by SSID
-                            print(f"{details['BSSID']:<20}{details['SSID']:<30}{signal_strength:<10}{details['Authentication']:<20}{details['Encryption']}")
-
-            else:
-                print(Fore.RED + "No networks found using pywifi.")
-
-            # Wait for a while before the next scan
-            time.sleep(10)
-
-    except KeyboardInterrupt:
-        print("\nExiting...")
-        exit()
-
-# Run the program
+# Run the script
 if __name__ == "__main__":
-    main()
+    # Replace 'wlan0' with your network interface in monitor mode (on Windows, this might be 'Wi-Fi')
+    start_sniffing(interface="WiFi")
