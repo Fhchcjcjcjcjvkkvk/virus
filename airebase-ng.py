@@ -9,7 +9,7 @@ def capture_packets(interface, beacon_count):
     Sniffs packets on the specified interface and displays beacon information in a table format.
 
     :param interface: The interface to capture packets from.
-    :param beacon_count: Number of beacon frames to capture before stopping.
+    :param beacon_count: The number of beacon frames to capture before stopping.
     """
     beacon_stats = {}
     total_beacons = 0
@@ -32,7 +32,8 @@ def capture_packets(interface, beacon_count):
             beacon_stats[bssid]['Beacons'] += 1
             total_beacons += 1
 
-            print(f"Beacon {total_beacons}: BSSID={bssid}, SSID={ssid}")
+            # Live update table
+            update_table(beacon_stats)
 
         # Check if the packet is a data packet
         if packet.haslayer(Dot11) and packet.type == 2:
@@ -44,10 +45,7 @@ def capture_packets(interface, beacon_count):
         if total_beacons >= beacon_count:
             return True
 
-        # Display live table after each packet
-        update_table(beacon_stats)
-
-    print(f"Starting sniffing on {interface}. Waiting for {beacon_count} beacon frames...")
+    print(f"Starting sniffing on {interface}. Capturing beacons up to {beacon_count}...")
 
     try:
         sniff(iface=interface, prn=packet_handler, stop_filter=lambda x: total_beacons >= beacon_count)
@@ -74,12 +72,12 @@ def update_table(beacon_stats):
         table.add_row([bssid, stats['SSID'], stats['Beacons'], stats['Data']])
 
     print(table)
-    time.sleep(0.5)  # Add a small delay to make it visible to the user
+    time.sleep(1)  # Add a small delay to make it visible to the user
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture Wi-Fi beacon frames and display network statistics.")
-    parser.add_argument("interface", help="The name of the network interface to use for sniffing.")
-    parser.add_argument("--count-beacons", type=int, default=10, help="The number of beacon frames to capture (default: 10).")
+    parser.add_argument("-i", "--interface", required=True, help="The name of the network interface to use for sniffing.")
+    parser.add_argument("--count-beacons", type=int, default=10, help="The number of beacon frames to capture before stopping (default: 10).")
 
     args = parser.parse_args()
 
