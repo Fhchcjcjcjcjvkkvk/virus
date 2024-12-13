@@ -19,18 +19,15 @@ def main():
         # Process each packet
         for packet in capture.sniff_continuously():
             try:
-                # Check if the packet contains DNS layer
-                if 'dns' in packet:
-                    print("\n--- DNS Packet Captured ---")
-                    # Show DNS query details (querying domain name)
-                    if hasattr(packet.dns, 'qry_name'):
-                        print(Fore.CYAN + f"DNS Query: {packet.dns.qry_name}")
-                    # Show DNS response details (answered domain name)
-                    elif hasattr(packet.dns, 'ans_name'):
-                        print(Fore.CYAN + f"DNS Response: {packet.dns.ans_name}")
+                # Debugging: Show each HTTP request captured
+                if 'http' in packet:
+                    print("\n--- HTTP Packet Captured ---")
+                    print(Fore.YELLOW + f"Request Method: {packet.http.request_method}")
+                    print(Fore.YELLOW + f"Request URI: {packet.http.request_uri}")
+                    print(Fore.YELLOW + f"Host: {packet.http.host}")
+                    print(Fore.YELLOW + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
 
-                # Check if the packet contains HTTP layer and it is a POST request for a login page
-                elif 'http' in packet and hasattr(packet, 'ip'):
+                    # Check if the HTTP packet is a POST to a login page
                     if packet.http.request_method == "POST" and '/login' in packet.http.request_uri:
                         print("\n--- HTTP Login Request Captured ---")
                         print(Fore.MAGENTA + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
@@ -42,6 +39,17 @@ def main():
                             print(Fore.MAGENTA + f"Form Data: {packet.http.file_data}")
                         else:
                             print(Fore.RED + "No form data found in POST request.")
+
+                # Check if the packet contains DNS layer
+                elif 'dns' in packet:
+                    print("\n--- DNS Packet Captured ---")
+                    # Show DNS query details (querying domain name)
+                    if hasattr(packet.dns, 'qry_name'):
+                        print(Fore.CYAN + f"DNS Query: {packet.dns.qry_name}")
+                    # Show DNS response details (answered domain name)
+                    elif hasattr(packet.dns, 'ans_name'):
+                        print(Fore.CYAN + f"DNS Response: {packet.dns.ans_name}")
+
             except AttributeError as e:
                 print(Fore.RED + f"Packet error: {e}")
     except KeyboardInterrupt:
