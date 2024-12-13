@@ -11,10 +11,11 @@ def main():
     parser.add_argument("-i", "--interface", required=True, help="The network interface to sniff on.")
     args = parser.parse_args()
 
-    # Start live capture on the specified interface
+    # Start live capture on the specified interface with broader filter
     try:
         print(f"Starting capture on interface: {args.interface}")
-        capture = pyshark.LiveCapture(interface=args.interface, display_filter="http or dns")
+        # Broad filter for both HTTP and HTTPS traffic
+        capture = pyshark.LiveCapture(interface=args.interface, display_filter="tcp port 80 or tcp port 443")
 
         # Process each packet
         for packet in capture.sniff_continuously():
