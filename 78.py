@@ -37,12 +37,11 @@ if __name__ == "__main__":
     # Ask the user for the interface name
     interface = input("Enter the interface name (e.g., Wi-Fi): ").strip()
 
-    # Start packet sniffing and displaying counts in separate threads
-    sniff_thread = threading.Thread(target=sniff_wifi, args=(interface,))
+    # Start displaying counts in a separate thread
     display_thread = threading.Thread(target=display_counts)
-
-    sniff_thread.start()
     display_thread.start()
 
-    sniff_thread.join()
-    display_thread.join()
+    # Run PyShark capture in the main thread
+    sniff_wifi(interface)
+
+    display_thread.join()  # Wait for the display thread to finish
