@@ -19,27 +19,31 @@ def main():
         # Process each packet
         for packet in capture.sniff_continuously():
             try:
-                # Debugging: Show each HTTP request captured
+                # Check if the packet contains HTTP layer
                 if 'http' in packet:
-                    print("\n--- HTTP Packet Captured ---")
-                    print(Fore.YELLOW + f"Request Method: {packet.http.request_method}")
-                    print(Fore.YELLOW + f"Request URI: {packet.http.request_uri}")
-                    print(Fore.YELLOW + f"Host: {packet.http.host}")
-                    print(Fore.YELLOW + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
-
-                    # Check if the HTTP packet is a POST to a login page
+                    # Print only POST requests to /login (login POST requests)
                     if packet.http.request_method == "POST" and '/login' in packet.http.request_uri:
-                        print("\n--- HTTP Login Request Captured ---")
-                        print(Fore.MAGENTA + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
-                        print(Fore.MAGENTA + f"Request URI: {packet.http.request_uri}")
-                        print(Fore.MAGENTA + f"Request: {packet.http.request_method} {packet.http.host}{packet.http.request_uri}")
+                        print("\n--- HTTP Login POST Request Captured ---")
                         
-                        # Extract form data (username, password, etc.)
-                        if hasattr(packet.http, 'file_data'):
-                            print(Fore.MAGENTA + f"Form Data: {packet.http.file_data}")
-                        else:
-                            print(Fore.RED + "No form data found in POST request.")
-
+                        # Ensure the packet has an IP layer before accessing packet.ip
+                        if hasattr(packet, 'ip'):
+                            print(Fore.MAGENTA + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
+                            print(Fore.MAGENTA + f"Request URI: {packet.http.request_uri}")
+                            print(Fore.MAGENTA + f"Request: {packet.http.request_method} {packet.http.host}{packet.http.request_uri}")
+                            
+                            # Extract form data (username, password, etc.)
+                            if hasattr(packet.http, 'file_data'):
+                                print(Fore.MAGENTA + f"Form Data: {packet.http.file_data}")
+                            else:
+                                print(Fore.RED + "No form data found in POST request.")
+                    else:
+                        print("\n--- HTTP Request Captured ---")
+                        print(Fore.YELLOW + f"Request Method: {packet.http.request_method}")
+                        print(Fore.YELLOW + f"Request URI: {packet.http.request_uri}")
+                        print(Fore.YELLOW + f"Host: {packet.http.host}")
+                        if hasattr(packet, 'ip'):
+                            print(Fore.YELLOW + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
+                        
                 # Check if the packet contains DNS layer
                 elif 'dns' in packet:
                     print("\n--- DNS Packet Captured ---")
