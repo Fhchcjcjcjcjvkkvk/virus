@@ -31,18 +31,10 @@ def detect_sqli(response_text):
             return True
     return False
 
-# Function to ensure URL has a scheme (http or https)
-def ensure_url_scheme(url):
-    parsed_url = urlparse(url)
-    if not parsed_url.scheme:
-        return 'https://' + url  # Default to https if no scheme is found
-    return url
-
 # Function to scan a URL for SQL injection vulnerabilities
-def check_sqli(url, payload, method, headers, data=None):
+def check_sqli(url, payload, method, headers, data):
     try:
-        # Ensure the URL has the correct scheme
-        url = ensure_url_scheme(url)
+        # Print the payload being tested
         print(f"TRYING PAYLOAD: {payload}")
         
         if method == 'GET':
@@ -53,7 +45,6 @@ def check_sqli(url, payload, method, headers, data=None):
                 query_params[key] = [payload]
             parsed_url = parsed_url._replace(query=urlencode(query_params, doseq=True))
             full_url = urlunparse(parsed_url)
-            print(f"GET URL: {full_url}")  # Debugging URL
             response = requests.get(full_url, headers=headers, timeout=5)
 
         elif method == 'POST':
@@ -61,7 +52,6 @@ def check_sqli(url, payload, method, headers, data=None):
             if data:
                 for key in data:
                     data[key] = payload
-            print(f"POST URL: {url} with data: {data}")  # Debugging data
             response = requests.post(url, data=data, headers=headers, timeout=5)
 
         # Check for SQL error keywords in the response
@@ -77,7 +67,6 @@ def check_sqli(url, payload, method, headers, data=None):
 def scan_parameters(url, headers, method, data=None):
     parsed_url = urlparse(url)
     params = parse_qs(parsed_url.query)
-    print(f"Scanning GET parameters for SQLi on URL: {url}")  # Debugging
 
     # Scan all URL parameters
     for param in params:
@@ -95,19 +84,18 @@ def scan_post_data(url, headers, data):
                 if check_sqli(url, payload, 'POST', headers, data_copy):
                     print(f"[INFO] SQL injection detected in POST parameter: {key} with payload: {payload}")
 
-# Function to scan the webpage for forms and count them
-def count_forms(url, headers):
+# Function to detect and count forms on the page
+def detect_forms(url):
     try:
-        url = ensure_url_scheme(url)  # Ensure URL has scheme
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, timeout=5)
         soup = BeautifulSoup(response.text, 'html.parser')
-        forms = soup.find_all('form')  # Find all <form> tags
+        forms = soup.find_all('form')
         form_count = len(forms)
-        print(f"FOUND {form_count} form(s)")
-        return form_count
+        print(f"[INFO] Found {form_count} form(s) on the page.")
+        return forms
     except requests.RequestException as e:
-        print(f"[Error] Unable to reach URL for form scan: {e}")
-        return 0
+        print(f"[Error] Unable to fetch forms from URL: {e}")
+        return []
 
 # Threading function to speed up the scanning process
 def scan_in_thread(url, method, headers, data=None):
@@ -119,25 +107,28 @@ def scan_in_thread(url, method, headers, data=None):
 # Main function
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python sqlscanner.py <URL>")
+        print("Usage: python sqlscan.py <URL>")
         sys.exit(1)
 
     url = sys.argv[1]
     headers = {}  # You can extend this for custom headers (like User-Agent, Cookies, etc.)
     data = {}  # For POST requests, this can hold form data
 
-    # Ensure the URL has the correct scheme before scanning
-    url = ensure_url_scheme(url)
-
-    # Count the number of forms on the page
-    count_forms(url, headers)
+    # Detect forms on the page
+    print(f"Scanning URL: {url}")
+    forms = detect_forms(url)
 
     # Check if the URL contains GET parameters or POST data
     parsed_url = urlparse(url)
     if '?' in parsed_url.query:  # It's a GET request with parameters
         print(f"Scanning GET request for SQLi: {url}")
         scan_in_thread(url, 'GET', headers)
-    else:  # POST request (you may need to adjust this to capture the form data)
+    elif forms:  # Scan forms if detected
+        print(f"Scanning detected forms for SQLi: {url}")
+        for form in forms:
+            # Simulate form scanning; you can extend this to scan specific form fields
+            scan_post_data(url, headers, data)
+    else:  # POST request with no detected forms
         print(f"Scanning POST request for SQLi: {url}")
         scan_in_thread(url, 'POST', headers, data)
 
