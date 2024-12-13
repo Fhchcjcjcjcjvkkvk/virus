@@ -39,7 +39,7 @@ def ensure_url_scheme(url):
     return url
 
 # Function to scan a URL for SQL injection vulnerabilities
-def check_sqli(url, payload, method, headers, data):
+def check_sqli(url, payload, method, headers, data=None):
     try:
         # Ensure the URL has the correct scheme
         url = ensure_url_scheme(url)
@@ -53,6 +53,7 @@ def check_sqli(url, payload, method, headers, data):
                 query_params[key] = [payload]
             parsed_url = parsed_url._replace(query=urlencode(query_params, doseq=True))
             full_url = urlunparse(parsed_url)
+            print(f"GET URL: {full_url}")  # Debugging URL
             response = requests.get(full_url, headers=headers, timeout=5)
 
         elif method == 'POST':
@@ -60,6 +61,7 @@ def check_sqli(url, payload, method, headers, data):
             if data:
                 for key in data:
                     data[key] = payload
+            print(f"POST URL: {url} with data: {data}")  # Debugging data
             response = requests.post(url, data=data, headers=headers, timeout=5)
 
         # Check for SQL error keywords in the response
@@ -75,6 +77,7 @@ def check_sqli(url, payload, method, headers, data):
 def scan_parameters(url, headers, method, data=None):
     parsed_url = urlparse(url)
     params = parse_qs(parsed_url.query)
+    print(f"Scanning GET parameters for SQLi on URL: {url}")  # Debugging
 
     # Scan all URL parameters
     for param in params:
@@ -116,7 +119,7 @@ def scan_in_thread(url, method, headers, data=None):
 # Main function
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python sqlscan.py <URL>")
+        print("Usage: python sqlscanner.py <URL>")
         sys.exit(1)
 
     url = sys.argv[1]
