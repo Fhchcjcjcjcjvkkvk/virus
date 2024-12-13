@@ -1,117 +1,69 @@
-import os
-import time
-import subprocess
-from pywifi import PyWiFi
-from colorama import Fore, init
+import argparse
+from scapy.all import sniff, Dot11
+from prettytable import PrettyTable
 
-# Initialize colorama
-init(autoreset=True)
-
-# Function to get all authentication methods using netsh
-def get_all_authentication_methods():
-    try:
-        # Run the netsh command to get network information
-        command = 'netsh wlan show networks'
-        result = subprocess.check_output(command, shell=True, text=True)
-
-        # Split the result into individual network blocks
-        networks = result.split("\n\n")
-        
-        auth_methods = []
-
-        # Loop through the blocks of network information
-        for network in networks:
-            auth_method = "Unknown"  # Default to "Unknown"
-            
-            # Look for the "Authentication" line and extract the method
-            for line in network.splitlines():
-                if "Authentication" in line:
-                    auth_method = line.split(":")[1].strip()
-                    auth_methods.append(auth_method)
-
-        return auth_methods
-
-    except Exception as e:
-        print(f"Error fetching authentication method: {e}")
-        return ["Unknown"]
-
-# Function to get available networks using pywifi
-def scan_networks_with_pywifi():
-    print(Fore.GREEN + "[Scanning for Networks using pywifi...]")
-    
-    wifi = PyWiFi()  # Create a PyWiFi object
-    iface = wifi.interfaces()[0]  # Get the first Wi-Fi interface (assuming it is the one used for scanning)
-
-    iface.scan()  # Start scanning for networks
-    time.sleep(2)  # Give it some time to scan
-    
-    networks = iface.scan_results()  # Get the scan results
-    return networks
-
-# Display the banner in green with the antenna in red
-def print_banner():
-    banner = f"""
-    {Fore.GREEN}.;'                     ;,    
-    .;'  ,;'             ;,  ;,  
-    .;'  ,;'  ,;'     ;,  ;,  ;,  
-    ::   ::   :   ( )   :   ::   ::  
-    {Fore.RED}':   ':   ':  /_\\ ,:'  ,:'  ,:'  
-     ':   ':     /___\\    ,:'  ,:'   
-      ':        /_____\\      ,:'     
-               /       \\          
+def capture_packets(interface, beacon_count):
     """
-    print(banner)
+    Sniffs packets on the specified interface and displays beacon information in a table format.
 
-# Print a loading bar
-def print_loading_bar(percentage):
-    bar_length = 40
-    block = int(round(bar_length * percentage))
-    progress = "█" * block + "-" * (bar_length - block)
-    print(f"\r[{percentage * 100:.0f}%|{progress}] ", end="")
+    :param interface: The interface to capture packets from.
+    :param beacon_count: Number of beacon frames to capture before stopping.
+    """
+    beacon_stats = {}
+    total_beacons = 0
 
-# Main function to continuously scan and display networks with BSSID, signal strength, and authentication method
-def main():
-    print_banner()
+    def packet_handler(packet):
+        nonlocal total_beacons
+        # Check if the packet has a Dot11 layer and is a beacon frame
+        if packet.haslayer(Dot11) and packet.type == 0 and packet.subtype == 8:
+            bssid = packet.addr2
+            ssid = packet.info.decode(errors='ignore') if packet.info else "<Hidden SSID>"
+
+            if bssid not in beacon_stats:
+                beacon_stats[bssid] = {
+                    'SSID': ssid,
+                    'Beacons': 0,
+                    'Data': 0
+                }
+
+            # Increment the beacon count
+            beacon_stats[bssid]['Beacons'] += 1
+            total_beacons += 1
+
+            print(f"Beacon {total_beacons}: BSSID={bssid}, SSID={ssid}")
+
+        # Check if the packet is a data packet
+        if packet.haslayer(Dot11) and packet.type == 2:
+            bssid = packet.addr2
+            if bssid in beacon_stats:
+                beacon_stats[bssid]['Data'] += 1
+
+        # Stop sniffing when the target beacon count is reached
+        if total_beacons >= beacon_count:
+            return True
+
+    print(f"Starting sniffing on {interface}. Waiting for {beacon_count} beacon frames...")
+
     try:
-        while True:
-            # Simulate loading bar before displaying networks
-            for i in range(101):
-                print_loading_bar(i / 100)
-                time.sleep(0.05)
+        sniff(iface=interface, prn=packet_handler, stop_filter=lambda x: total_beacons >= beacon_count)
+    except PermissionError:
+        print("Error: Insufficient permissions. Please run this script as Administrator.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
-            # Get networks using pywifi
-            networks = scan_networks_with_pywifi()
+    # Display the results in a table
+    table = PrettyTable()
+    table.field_names = ["BSSID", "SSID", "Beacons", "Data"]
+    for bssid, stats in beacon_stats.items():
+        table.add_row([bssid, stats['SSID'], stats['Beacons'], stats['Data']])
 
-            # Get authentication methods using netsh
-            auth_methods = get_all_authentication_methods()
+    print(table)
 
-            # Clear screen before printing new results
-            os.system("cls" if os.name == "nt" else "clear")
-
-            # Print the header
-            print(Fore.RED + "==== Available Networks ====")
-            print(Fore.GREEN + f"{'BSSID':<20}{'ESSID':<30}{'PWR':<6}{'Auth Method'}")
-
-            # Print network details
-            if networks:
-                for i, net in enumerate(networks):
-                    bssid = net.bssid
-                    ssid = net.ssid
-                    signal_strength = net.signal
-                    # If there are more authentication methods than networks, we loop through them
-                    auth_method = auth_methods[i] if i < len(auth_methods) else "Unknown"
-
-                    print(f"{bssid:<20}{ssid:<30}{signal_strength:<6}{auth_method}")
-            else:
-                print(Fore.RED + "No networks found.")
-
-            # Wait for a while before the next scan
-            time.sleep(10)
-
-    except KeyboardInterrupt:
-        print("\nExiting...")
-        exit()
-
-# Run the program
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Capture Wi-Fi beacon frames and display network statistics.")
+    parser.add_argument("interface", help="The name of the network interface to use for sniffing.")
+    parser.add_argument("--count-beacons", type=int, default=10, help="The number of beacon frames to capture (default: 10).")
+
+    args = parser.parse_args()
+
+    capture_packets(args.interface, args.count_beacons)
