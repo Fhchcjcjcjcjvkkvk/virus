@@ -7,7 +7,7 @@ def main():
     init(autoreset=True)
 
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="A simple network sniffer to capture both HTTP and DNS traffic.")
+    parser = argparse.ArgumentParser(description="Capture DNS packets and HTTP login requests.")
     parser.add_argument("-i", "--interface", required=True, help="The network interface to sniff on.")
     args = parser.parse_args()
 
@@ -19,11 +19,20 @@ def main():
         # Process each packet
         for packet in capture.sniff_continuously():
             try:
-                # Check if the packet contains HTTP layer
-                if 'http' in packet:
-                    # If it's a POST request (usually for form submissions)
-                    if packet.http.request_method == "POST":
-                        print("\n--- POST Data Captured (HTTP) ---")
+                # Check if the packet contains DNS layer
+                if 'dns' in packet:
+                    print("\n--- DNS Packet Captured ---")
+                    # Show DNS query details (querying domain name)
+                    if hasattr(packet.dns, 'qry_name'):
+                        print(Fore.CYAN + f"DNS Query: {packet.dns.qry_name}")
+                    # Show DNS response details (answered domain name)
+                    elif hasattr(packet.dns, 'ans_name'):
+                        print(Fore.CYAN + f"DNS Response: {packet.dns.ans_name}")
+
+                # Check if the packet contains HTTP layer and it is a POST request for a login page
+                elif 'http' in packet and hasattr(packet, 'ip'):
+                    if packet.http.request_method == "POST" and '/login' in packet.http.request_uri:
+                        print("\n--- HTTP Login Request Captured ---")
                         print(Fore.MAGENTA + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
                         print(Fore.MAGENTA + f"Request URI: {packet.http.request_uri}")
                         print(Fore.MAGENTA + f"Request: {packet.http.request_method} {packet.http.host}{packet.http.request_uri}")
@@ -33,19 +42,6 @@ def main():
                             print(Fore.MAGENTA + f"Form Data: {packet.http.file_data}")
                         else:
                             print(Fore.RED + "No form data found in POST request.")
-
-                # Check if the packet contains DNS layer
-                elif 'dns' in packet:
-                    print("\n--- DNS Query/Response Captured ---")
-                    print(Fore.CYAN + f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
-                    
-                    # Print DNS query or response details
-                    if hasattr(packet.dns, 'qry_name'):  # DNS query
-                        print(Fore.CYAN + f"DNS Query: {packet.dns.qry_name}")
-                    elif hasattr(packet.dns, 'ans_name'):  # DNS response
-                        print(Fore.CYAN + f"DNS Response: {packet.dns.ans_name}")
-                    else:
-                        print(Fore.RED + "Unknown DNS packet format.")
             except AttributeError as e:
                 print(Fore.RED + f"Packet error: {e}")
     except KeyboardInterrupt:
