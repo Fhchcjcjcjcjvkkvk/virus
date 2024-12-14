@@ -11,19 +11,23 @@ from requests.exceptions import RequestException
 import colorlog  # For colored logging
 
 # Setup colored logging
-LOG_FORMAT = "%(log_color)s[%(levelname)s] %(message)s"
+LOG_FORMAT = "[%(levelname)s] %(message)s"
 logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
 
-# Create a color log handler
+# Create a color log handler with a proper colored formatter
 logger = logging.getLogger()
 handler = colorlog.StreamHandler()
-formatter = colorlog.ColoredFormatter(LOG_FORMAT, datefmt=None, log_colors={
-    'DEBUG': 'yellow',
-    'INFO': 'yellow',
-    'WARNING': 'yellow',
-    'ERROR': 'yellow',
-    'CRITICAL': 'yellow'
-})
+formatter = colorlog.ColoredFormatter(
+    "%(log_color)s[%(levelname)s] %(message)s",
+    datefmt=None,
+    log_colors={
+        'DEBUG': 'yellow',
+        'INFO': 'yellow',
+        'WARNING': 'yellow',
+        'ERROR': 'yellow',
+        'CRITICAL': 'yellow'
+    }
+)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
