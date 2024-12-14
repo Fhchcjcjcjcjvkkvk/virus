@@ -23,7 +23,8 @@ class ColorizedFormatter(logging.Formatter):
         'INFO': Fore.GREEN,
         'WARNING': Fore.YELLOW,
         'ERROR': Fore.RED,
-        'DEBUG': Fore.CYAN
+        'DEBUG': Fore.CYAN,
+        'CRITICAL': Fore.RED + '[ CRITICAL ]' + Fore.RESET
     }
 
     def format(self, record):
@@ -89,7 +90,7 @@ def scan_url(url, dbs=False, session=None):
         else:
             logger.warning(f"Failed to fetch {url} - Status code: {response.status_code}")
     except Exception as e:
-        logger.error(f"Error scanning {url}: {str(e)}")
+        logger.critical(f"Critical error scanning {url}: {str(e)}")
 
 def test_sqli(url, payload, session):
     """
@@ -110,7 +111,7 @@ def test_sqli(url, payload, session):
         elif "mysql" in response.text.lower() or "syntax error" in response.text.lower():
             logger.warning(f"Possible MySQL SQLi on {url} with payload: {payload}")
     except requests.exceptions.RequestException as e:
-        logger.error(f"Request failed for {url} with payload {payload}: {str(e)}")
+        logger.critical(f"Request failed for {url} with payload {payload}: {str(e)}")
 
 def test_sqli_dbs(url, session):
     """
@@ -126,7 +127,7 @@ def test_sqli_dbs(url, session):
             # Attempt to retrieve databases or other SQLi information
             retrieve_databases(url, session)
     except requests.exceptions.RequestException as e:
-        logger.error(f"Request failed for {url} with db payload: {str(e)}")
+        logger.critical(f"Request failed for {url} with db payload: {str(e)}")
 
 def retrieve_databases(url, session):
     """
@@ -140,7 +141,7 @@ def retrieve_databases(url, session):
         if "error" not in response.text.lower():
             logger.info(f"Databases retrieved from {url}: {response.text[:200]}")  # Display a portion of the result
     except requests.exceptions.RequestException as e:
-        logger.error(f"Request failed for {url} with enum db payload: {str(e)}")
+        logger.critical(f"Request failed for {url} with enum db payload: {str(e)}")
 
 def parse_and_scan(html, base_url, session, dbs=False):
     """
