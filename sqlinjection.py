@@ -17,18 +17,15 @@ logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
 # Create a color log handler
 logger = logging.getLogger()
 handler = colorlog.StreamHandler()
-formatter = colorlog.ColoredFormatter(LOG_FORMAT)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-# Change default color mapping to make everything yellow
-formatter._color_map = {
+formatter = colorlog.ColoredFormatter(LOG_FORMAT, datefmt=None, log_colors={
     'DEBUG': 'yellow',
     'INFO': 'yellow',
     'WARNING': 'yellow',
     'ERROR': 'yellow',
     'CRITICAL': 'yellow'
-}
+})
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # Global variables
 found_vulnerabilities = []
