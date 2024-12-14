@@ -4,8 +4,6 @@ from bs4 import BeautifulSoup
 import logging
 import threading
 import time
-import random
-import string
 from queue import Queue
 from colorama import Fore, init
 
@@ -100,7 +98,9 @@ def test_sqli(url, payload, session):
     :param payload: The SQL injection payload.
     :param session: A persistent session object to reuse connections.
     """
+    # Ensure the URL is properly concatenated without URL-encoding the payload
     test_url = f"{url}{payload}"
+    
     try:
         response = session.get(test_url, headers=HEADERS, timeout=10)
         
