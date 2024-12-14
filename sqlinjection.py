@@ -84,6 +84,9 @@ def test_sql_injection(url, method, form_data):
                 with lock:
                     found_vulnerabilities.append((url, payload, "MySQL-based SQL Injection"))
                     logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
+            else:
+                # Add the "else" case which will show up in yellow
+                logger.warning(f"[ ELSE ] Trying different payloads at {url} with payload {payload}")
         except RequestException as e:
             logger.error(f"Error testing {url}: {str(e)}")
 
