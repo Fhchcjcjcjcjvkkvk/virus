@@ -98,6 +98,7 @@ def test_sql_injection(url, method, form_data):
             elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump
                 logger.info(f"[CREDENTIALS DUMP] Found credentials at {url} with payload {payload}")
                 dump_credentials(response.text)
+                break  # Stop further scanning after dumping credentials
             else:
                 logger.info(f"[ ELSE ] Trying different payloads at {url} with payload {payload}")
 
