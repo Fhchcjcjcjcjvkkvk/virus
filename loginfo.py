@@ -53,4 +53,5 @@ def welcome():
     return "Welcome to the system!"
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # On Replit, ensure the host is set to '0.0.0.0' and the port is set to 3000.
+    app.run(host='0.0.0.0', port=3000, debug=True)
