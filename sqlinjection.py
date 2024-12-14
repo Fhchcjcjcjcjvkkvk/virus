@@ -8,9 +8,18 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from collections import deque
 from requests.exceptions import RequestException
+import colorlog  # For colored logging
 
-# Setup logging
-logging.basicConfig(filename='sqlscan.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# Setup colored logging
+LOG_FORMAT = "%(log_color)s[%(levelname)s] %(message)s"
+logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+
+# Create a color log handler
+logger = logging.getLogger()
+handler = colorlog.StreamHandler()
+formatter = colorlog.ColoredFormatter(LOG_FORMAT)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # Global variables
 found_vulnerabilities = []
@@ -70,13 +79,13 @@ def test_sql_injection(url, method, form_data):
             if "error" in response.text.lower() or response.status_code == 500:  # Error-based SQLi detection
                 with lock:
                     found_vulnerabilities.append((url, payload, "Possible SQL Injection"))
-                    logging.info(f"SQL Injection found at {url} with payload {payload}")
+                    logger.info(f"SQL Injection found at {url} with payload {payload}")
             elif response.status_code == 200 and "mysql" in response.text.lower():  # MySQL-based vulnerability detection
                 with lock:
                     found_vulnerabilities.append((url, payload, "MySQL-based SQL Injection"))
-                    logging.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
+                    logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
         except RequestException as e:
-            logging.error(f"Error testing {url}: {str(e)}")
+            logger.error(f"Error testing {url}: {str(e)}")
 
 # Function to scan forms on a page
 def scan_forms(url):
@@ -85,7 +94,7 @@ def scan_forms(url):
         soup = BeautifulSoup(response.text, 'html.parser')
 
         forms = soup.find_all('form')
-        logging.info(f"Scanning {len(forms)} forms on {url}")
+        logger.info(f"Scanning {len(forms)} forms on {url}")
 
         for form in forms:
             action = form.get('action')
@@ -102,9 +111,9 @@ def scan_forms(url):
             if form_data:
                 test_sql_injection(action_url, method, form_data)
             else:
-                logging.debug(f"No form inputs found on {url}.")
+                logger.debug(f"No form inputs found on {url}.")
     except RequestException as e:
-        logging.error(f"Error while fetching {url}: {str(e)}")
+        logger.error(f"Error while fetching {url}: {str(e)}")
 
 # Function to crawl and explore the target URL (multiple pages)
 def crawl(url):
@@ -118,7 +127,7 @@ def crawl(url):
             continue
 
         visited_urls.add(current_url)
-        logging.info(f"Scanning {current_url}")
+        logger.info(f"Scanning {current_url}")
         scan_forms(current_url)
 
         # Crawl links on the page
@@ -135,24 +144,24 @@ def crawl(url):
                     urls_to_scan.append(full_url)
 
         except RequestException as e:
-            logging.error(f"Error fetching links from {current_url}: {str(e)}")
+            logger.error(f"Error fetching links from {current_url}: {str(e)}")
 
 # Main function
 def main(target_url):
-    logging.info(f"Starting SQL Injection scan on {target_url}")
+    logger.info(f"Starting SQL Injection scan on {target_url}")
     start_time = time.time()
 
     crawl(target_url)
 
     if found_vulnerabilities:
-        logging.info("SQL Injection vulnerabilities found:")
+        logger.info("SQL Injection vulnerabilities found:")
         for vuln in found_vulnerabilities:
             print(f"Vulnerability found at: {vuln[0]} with payload: {vuln[1]}")
 
     else:
-        logging.info("No vulnerabilities found.")
+        logger.info("No vulnerabilities found.")
 
-    logging.info(f"Scan completed in {time.time() - start_time:.2f} seconds")
+    logger.info(f"Scan completed in {time.time() - start_time:.2f} seconds")
 
 if __name__ == '__main__':
     import argparse
