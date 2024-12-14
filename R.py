@@ -1,43 +1,45 @@
-import pyshark
-import argparse
-from colorama import init, Fore
+from flask import Flask, request, render_template_string
+import xml.etree.ElementTree as ET  # Pozor: standardní knihovna, zranitelná vůči XXE
 
-def main():
-    # Initialize colorama
-    init(autoreset=True)
-    
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="A simple network sniffer to display HTTP and DNS requests.")
-    parser.add_argument("-i", "--interface", required=True, help="The network interface to sniff on.")
-    args = parser.parse_args()
+app = Flask(__name__)
 
-    # Start live capture on the specified interface
-    try:
-        print(f"Starting capture on interface: {args.interface}")
-        capture = pyshark.LiveCapture(interface=args.interface, display_filter="http or dns")
+@app.route("/", methods=["GET", "POST"])
+def index():
+    # Jednoduchá HTML šablona
+    html_template = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>XXE Test Web</title>
+    </head>
+    <body>
+        <h1>XXE Vulnerability Test</h1>
+        <p>Zadejte XML kód a sledujte výsledek:</p>
+        <form method="POST" action="/">
+            <label for="xml">Váš XML kód:</label><br>
+            <textarea id="xml" name="xml" rows="10" cols="50"></textarea><br><br>
+            <button type="submit">Odeslat</button>
+        </form>
+        {% if result %}
+            <h2>Výsledek:</h2>
+            <pre>{{ result }}</pre>
+        {% endif %}
+    </body>
+    </html>
+    """
 
-        # Process each packet
-        for packet in capture.sniff_continuously():
-            try:
-                if 'http' in packet:
-                    print("\n" + Fore.RED + "--- HTTP Packet Captured ---")
-                    print(f"Source: {packet.ip.src} -> Destination: {packet.ip.dst}")
-                    print(f"Request: {packet.http.request_method} {packet.http.host}{packet.http.request_uri}")
-                    print(f"User-Agent: {packet.http.get('User-Agent', 'N/A')}")
-                    if packet.http.request_method == "POST" and hasattr(packet.http, 'file_data'):
-                        print(f"Form Data: {packet.http.file_data}")
-                elif 'dns' in packet:
-                    print("\n" + Fore.GREEN + "--- DNS Packet Captured ---")
-                    if hasattr(packet.dns, 'qry_name'):
-                        print(f"Query: {packet.dns.qry_name}")
-                    else:
-                        print("No DNS query name found.")
-            except AttributeError as e:
-                print(f"Packet error: {e}")
-    except KeyboardInterrupt:
-        print("\nCapture stopped.")
-    except Exception as e:
-        print(f"Error: {e}")
+    result = None
+
+    if request.method == "POST":
+        xml_data = request.form.get("xml", "")
+        try:
+            # Pokus o parsování zadaného XML
+            root = ET.fromstring(xml_data)
+            result = ET.tostring(root, encoding="unicode")
+        except Exception as e:
+            result = f"Chyba při parsování XML: {e}"
+
+    return render_template_string(html_template, result=result)
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)
