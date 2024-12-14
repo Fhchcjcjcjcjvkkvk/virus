@@ -87,4 +87,5 @@ def gedit_file(cmd):
         return f"Soubor {file_to_read} neexistuje.", 404
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)  # Spustí server na localhostu, port 5000
+    # Spustí server na adrese 10.0.1.12 a portu 5000
+    app.run(debug=True, host='10.0.1.12', port=5000)  # Spustí server na IP 10.0.1.12 a portu 5000
