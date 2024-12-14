@@ -10,7 +10,7 @@ import cv2
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='.', intents=intents)
 
 # Define the command to disconnect from WiFi
 @bot.command(name='dis')
