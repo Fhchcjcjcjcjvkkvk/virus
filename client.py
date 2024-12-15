@@ -57,7 +57,8 @@ def handle_command(command):
 def listen_for_commands():
     # Start listening for incoming connections on port 12345
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-        server_socket.bind(('127.0.0.1', 12345))
+        server_socket.bind(('1
+        ', 12345))
         server_socket.listen(1)  # Allow only one client to connect
         
         print("Waiting for connection...")
