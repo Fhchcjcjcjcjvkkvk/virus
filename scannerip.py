@@ -5,23 +5,24 @@ from colorama import init, Fore
 # Initialize colorama
 init(autoreset=True)
 
-# Function to check if the IP is reachable on a given port
-def check_ip(ip, port=80, timeout=2):
-    try:
-        # Try to connect to the IP on the given port
-        socket.setdefaulttimeout(timeout)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex((ip, port))
+# Function to check if the IP is reachable on one of several ports
+def check_ip(ip, ports=[80, 443, 22, 23, 8080], timeout=2):
+    for port in ports:
+        try:
+            # Try to connect to the IP on the given port
+            socket.setdefaulttimeout(timeout)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            result = sock.connect_ex((ip, port))
 
-        # If result is 0, it means the IP is reachable on that port
-        if result == 0:
-            return True
-        else:
-            return False
-    except socket.error:
-        return False
-    finally:
-        sock.close()
+            # If result is 0, it means the IP is reachable on that port
+            if result == 0:
+                return True
+        except socket.error:
+            continue
+        finally:
+            sock.close()
+    
+    return False
 
 # Function to scan the IPs from a file and save available IPs to a new file
 def scan_ips(file_name):
