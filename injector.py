@@ -52,8 +52,8 @@ def brute_force_worker(id, queue, wordlist, username):
 def main():
     # Check if the correct arguments are passed
     import sys
-    if len(sys.argv) != 3:
-        print("Usage: python brute_force.py <username> <ips_file> <wordlist_file>")
+    if len(sys.argv) != 4:
+        print("Usage: python injector.py <username> <ips_file> <wordlist_file>")
         sys.exit(1)
 
     username = sys.argv[1]
