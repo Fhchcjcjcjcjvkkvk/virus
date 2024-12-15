@@ -5,14 +5,15 @@ from colorama import Fore, init
 # Initialize colorama for cross-platform color support
 init(autoreset=True)
 
-# Function to check if an IP is reachable
+# Function to check if an IP is reachable (via TCP connection to port 80)
 def check_ip(ip, available_ips):
     try:
-        # Try to resolve the IP to a valid socket
-        socket.gethostbyaddr(ip)
+        # Attempt to connect to the IP on port 80 (HTTP)
+        sock = socket.create_connection((ip, 80), timeout=5)
+        sock.close()
         print(f"{Fore.GREEN}{ip} AVAILABLE!")
         available_ips.append(ip)  # Add to the list of available IPs
-    except socket.herror:
+    except (socket.timeout, socket.gaierror, socket.error):
         print(f"{Fore.RED}{ip} NOT EXISTING!")
 
 # Main function to read IPs from the file and check each
