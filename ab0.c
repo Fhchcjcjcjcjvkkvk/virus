@@ -3,7 +3,7 @@
 #include <time.h>
 #include <string.h>  // Include this header for strlen
 
-#define NUM_WORDS 10
+#define NUM_WORDS 50
 #define WORD_LENGTH 7
 #define CHAR_SET "abcdegrfkdlANBSHJJDO1245678?!"
 
