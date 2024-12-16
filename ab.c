@@ -1,15 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>  // Include this header for strlen
 
 #define NUM_WORDS 10
 #define WORD_LENGTH 7
-#define CHAR_SET "abcdegrfkdlANBSHJDO1245678?!"
+#define CHAR_SET "abcdegrfkdlANBSHJJDO1245678?!"
 
 // Function to generate a random word
 void generate_word(char *word, int length) {
-    int char_set_length = strlen(CHAR_SET);
-    
+    int char_set_length = strlen(CHAR_SET);  // Now this will work
+
     for (int i = 0; i < length; i++) {
         int random_index = rand() % char_set_length;
         word[i] = CHAR_SET[random_index];
