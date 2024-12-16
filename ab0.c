@@ -4,7 +4,7 @@
 #include <string.h>  // Include this header for strlen
 
 #define NUM_WORDS 50
-#define WORD_LENGTH 7
+#define WORD_LENGTH 8
 #define CHAR_SET "abcdegrfkdlANBSHJJDO1245678?!"
 
 // Function to generate a random word
