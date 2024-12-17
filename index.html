@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Save Message</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f4f4f9;
+    }
+    h1 {
+      color: #333;
+    }
+    #messageBox {
+      width: 100%;
+      height: 100px;
+      margin-bottom: 20px;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    #sendButton {
+      padding: 10px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #sendButton:hover {
+      background-color: #45a049;
+    }
+    #messages {
+      margin-top: 20px;
+    }
+    .message {
+      background-color: #e7f7e7;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      border-left: 5px solid #4CAF50;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Send Messages</h1>
+  
+  <!-- Message input box -->
+  <textarea id="messageBox" placeholder="Write your message..."></textarea><br>
+  <button id="sendButton">Send Message</button>
+  
+  <!-- Area to display saved file messages -->
+  <div id="messages"></div>
+  
+  <!-- Include Socket.io client -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();  // Connect to the server
+
+    // Send message when button is clicked
+    document.getElementById('sendButton').addEventListener('click', () => {
+      const message = document.getElementById('messageBox').value;
+      if (message.trim()) {
+        socket.emit('sendMessage', message);  // Send message to the server
+        document.getElementById('messageBox').value = '';  // Clear the box
+      }
+    });
+
+    // Listen for file save messages from the server
+    socket.on('fileSaved', (message) => {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message');
+      messageDiv.textContent = message;
+      document.getElementById('messages').appendChild(messageDiv);
+    });
+  </script>
+
+</body>
+</html>
