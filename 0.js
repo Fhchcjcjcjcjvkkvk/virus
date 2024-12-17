@@ -3,6 +3,8 @@ const chokidar = require('chokidar');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const http = require('http');
+const socketIo = require('socket.io');
 
 // Get your local IP address (for Windows)
 const getLocalIpAddress = () => {
@@ -21,22 +23,23 @@ const localIp = getLocalIpAddress();
 
 // Create an Express app
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);  // Set up socket.io with the server
 
-// Specify the port (you can choose any free port)
+// Specify the port
 const port = 3000;
 
-// Set up static file serving (optional)
+// Set up static file serving
 app.use(express.static('public'));
 
 // Basic route to test the server
 app.get('/', (req, res) => {
-  res.send('Server is running on your local IP address!');
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Start the server on your local IP address
-app.listen(port, localIp, () => {
+server.listen(port, localIp, () => {
   console.log(`Server running at http://${localIp}:${port}`);
-  console.log(`Or use your local IP address: http://<Your_Local_IP>:${port}`);
 });
 
 // Watch for file changes in a specific directory
@@ -58,6 +61,7 @@ watcher.on('change', (filePath) => {
 // Function to simulate sending a message when a file is saved
 function sendMessage(message) {
   console.log(`Message: ${message}`);
+  io.emit('fileSaved', message);  // Emit the message to all connected clients
 }
 
 // For testing, let's create an empty file in the watched folder after 5 seconds
