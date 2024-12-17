@@ -1,59 +1,50 @@
 <?php
-// Připojení k databázi
+// Database connection
 $servername = "localhost";
-$username = "root";  // Nahraďte skutečným uživatelským jménem
-$password = "";  // Nahraďte skutečným heslem
-$dbname = "testdb";  // Nahraďte skutečným názvem databáze
+$username = "root";  // Default for XAMPP, change if necessary
+$password = "";      // Default for XAMPP, change if necessary
+$dbname = "vulnerable_app";
 
-// Vytvoření připojení
+// Create connection
 $conn = new mysqli($servername, $username, $password, $dbname);
 
-// Zkontrolujte připojení
+// Check connection
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// Zpracování přihlášení, pokud byl odeslán formulář
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Získání uživatelského vstupu z formuláře
-    $username_input = $_POST['username'];
-    $password_input = $_POST['password'];
-    
-    // Zranitelný SQL dotaz (uživatelský vstup není nikdy ošetřen)
-    // Poznámka: Tento dotaz umožňuje SQL injection
-    $sql = "SELECT * FROM users WHERE username='$username_input' AND password='$password_input'";
+    // Get user input
+    $username = $_POST['username'];
+    $password = $_POST['password'];
 
-    // Provedení dotazu
+    // Dangerous SQL query: no input sanitization (SQL Injection vulnerability)
+    $sql = "SELECT * FROM user_data WHERE username = '$username' AND password = '$password'";
+
     $result = $conn->query($sql);
 
-    // Kontrola výsledku
     if ($result->num_rows > 0) {
-        // Uživatelský účet nalezen, přihlášení úspěšné
-        echo "Vítejte, " . $username_input . "!";
+        echo "Login successful!";
     } else {
-        // Špatné přihlašovací údaje
-        echo "Neplatné uživatelské jméno nebo heslo.";
+        echo "Invalid credentials.";
     }
 }
 
-$conn->close();
 ?>
 
 <!DOCTYPE html>
-<html lang="cs">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Page</title>
 </head>
 <body>
-
-<h2>Přihlášení</h2>
-<form method="POST" action="">
-    Uživatelské jméno: <input type="text" name="username" required><br><br>
-    Heslo: <input type="password" name="password" required><br><br>
-    <input type="submit" value="Přihlásit se">
-</form>
-
+    <h2>Login</h2>
+    <form method="POST">
+        Username: <input type="text" name="username"><br>
+        Password: <input type="password" name="password"><br>
+        <input type="submit" value="Login">
+    </form>
 </body>
 </html>
