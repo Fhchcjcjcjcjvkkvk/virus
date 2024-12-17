@@ -1,3 +1,4 @@
+// Client-side code (script.js)
 const socket = io();
 
 // Reference to the messages div
@@ -12,10 +13,11 @@ socket.on('message', (msg) => {
   messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll to the latest message
 });
 
-// Send message to the server when the user types something and presses Enter
+// Send message to the server when user presses Enter
 chatInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && chatInput.value.trim() !== '') {
-    socket.emit('chatMessage', chatInput.value);
+    const message = chatInput.value.trim();
+    socket.emit('chatMessage', message);  // Send message to the server
     chatInput.value = ''; // Clear input field
   }
 });
