@@ -1,31 +1,29 @@
-// Import the required modules
+// Server-side code (server.js)
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const os = require('os');
 
-// Initialize the app and create the server
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// Serve static files from the 'public' directory
 app.use(express.static('public'));
 
-// Create a route for the homepage
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/index.html');
 });
 
-// Set up a connection listener for sockets
 io.on('connection', (socket) => {
   console.log('A user connected');
   
-  // Broadcast a message to all users when a new user joins
+  // Broadcast a message when a user joins
   socket.broadcast.emit('message', 'A new user has joined the chat.');
 
-  // Listen for incoming messages and broadcast them to all users
+  // Handle incoming chat messages from clients
   socket.on('chatMessage', (msg) => {
-    io.emit('message', msg);
+    console.log('Received message:', msg);  // Log the received message on the server
+    io.emit('message', msg);  // Broadcast the message to all users
   });
 
   // Handle user disconnecting
@@ -35,11 +33,8 @@ io.on('connection', (socket) => {
   });
 });
 
-// Get your local IP address (useful for local network access)
-const os = require('os');
 const ifaces = os.networkInterfaces();
 let localIp = '';
-
 for (const iface in ifaces) {
   ifaces[iface].forEach((details) => {
     if (details.family === 'IPv4' && !details.internal) {
@@ -48,10 +43,9 @@ for (const iface in ifaces) {
   });
 }
 
-const PORT = 3000; // You can change the port number if needed
-const HOST = localIp; // Local IP address
+const PORT = 3000;
+const HOST = localIp;
 
-// Start the server on your local IP and port
 server.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
 });
