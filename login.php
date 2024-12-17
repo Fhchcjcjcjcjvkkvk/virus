@@ -1,10 +1,11 @@
 <?php
 // Připojení k databázi
 $servername = "localhost";
-$username = "root";  // Změňte podle vaší konfigurace
-$password = "";      // Změňte podle vaší konfigurace
-$dbname = "testdb";  // Název databáze
+$username = "root";  // Nahraďte skutečným uživatelským jménem
+$password = "";  // Nahraďte skutečným heslem
+$dbname = "testdb";  // Nahraďte skutečným názvem databáze
 
+// Vytvoření připojení
 $conn = new mysqli($servername, $username, $password, $dbname);
 
 // Zkontrolujte připojení
@@ -12,19 +13,26 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// Zpracování formuláře
+// Zpracování přihlášení, pokud byl odeslán formulář
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = $_POST['username'];
-    $password = $_POST['password'];
+    // Získání uživatelského vstupu z formuláře
+    $username_input = $_POST['username'];
+    $password_input = $_POST['password'];
+    
+    // Zranitelný SQL dotaz (uživatelský vstup není nikdy ošetřen)
+    // Poznámka: Tento dotaz umožňuje SQL injection
+    $sql = "SELECT * FROM users WHERE username='$username_input' AND password='$password_input'";
 
-    // SQL dotaz je zranitelný vůči SQL injection, protože uživatelský vstup není escapován
-    $sql = "SELECT * FROM users WHERE username = '$username' AND password = '$password'";
+    // Provedení dotazu
     $result = $conn->query($sql);
 
+    // Kontrola výsledku
     if ($result->num_rows > 0) {
-        echo "Login successful!";
+        // Uživatelský účet nalezen, přihlášení úspěšné
+        echo "Vítejte, " . $username_input . "!";
     } else {
-        echo "Invalid username or password!";
+        // Špatné přihlašovací údaje
+        echo "Neplatné uživatelské jméno nebo heslo.";
     }
 }
 
@@ -32,22 +40,20 @@ $conn->close();
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="cs">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Page</title>
 </head>
 <body>
-    <h2>Login</h2>
-    <form method="POST" action="login.php">
-        <label for="username">Username:</label>
-        <input type="text" id="username" name="username" required><br><br>
 
-        <label for="password">Password:</label>
-        <input type="password" id="password" name="password" required><br><br>
+<h2>Přihlášení</h2>
+<form method="POST" action="">
+    Uživatelské jméno: <input type="text" name="username" required><br><br>
+    Heslo: <input type="password" name="password" required><br><br>
+    <input type="submit" value="Přihlásit se">
+</form>
 
-        <input type="submit" value="Login">
-    </form>
 </body>
 </html>
