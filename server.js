@@ -1,32 +1,57 @@
+// Import the required modules
+const express = require('express');
 const http = require('http');
-const fs = require('fs');
-const chokidar = require('chokidar');
+const socketIo = require('socket.io');
 
-// Get local IP address
-const localIp = require('os').networkInterfaces().en0[1].address;  // Adjust based on your OS (en0 is typically used for macOS)
+// Initialize the app and create the server
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
 
-let lastMessage = '';
+// Serve static files from the 'public' directory
+app.use(express.static('public'));
 
-// Watch the specified directory for changes
-const watcher = chokidar.watch('./watched-folder', { persistent: true });
-
-watcher.on('change', (path) => {
-  lastMessage = `File saved: ${path}`;
-  console.log(lastMessage);
+// Create a route for the homepage
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/public/index.html');
 });
 
-// Create an HTTP server
-const server = http.createServer((req, res) => {
-  if (req.method === 'GET' && req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end(lastMessage || 'No file changes yet.');
-  } else {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
-  }
+// Set up a connection listener for sockets
+io.on('connection', (socket) => {
+  console.log('A user connected');
+  
+  // Broadcast a message to all users when a new user joins
+  socket.broadcast.emit('message', 'A new user has joined the chat.');
+
+  // Listen for incoming messages and broadcast them to all users
+  socket.on('chatMessage', (msg) => {
+    io.emit('message', msg);
+  });
+
+  // Handle user disconnecting
+  socket.on('disconnect', () => {
+    console.log('A user disconnected');
+    io.emit('message', 'A user has left the chat.');
+  });
 });
 
-// Start server on local IP address at port 3000
-server.listen(3000, localIp, () => {
-  console.log(`Server running at http://${localIp}:3000`);
+// Get your local IP address (useful for local network access)
+const os = require('os');
+const ifaces = os.networkInterfaces();
+let localIp = '';
+
+for (const iface in ifaces) {
+  ifaces[iface].forEach((details) => {
+    if (details.family === 'IPv4' && !details.internal) {
+      localIp = details.address;
+    }
+  });
+}
+
+const PORT = 3000; // You can change the port number if needed
+const HOST = localIp; // Local IP address
+
+// Start the server on your local IP and port
+server.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
 });
