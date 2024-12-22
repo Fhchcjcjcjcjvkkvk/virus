@@ -20,7 +20,9 @@ app.post('/', (req, res) => {
     res.send('Credentials received successfully');
 });
 
-// Start the server on port 3000
-app.listen(3000, () => {
-    console.log('Server is running on http://localhost:3000');
+// Start the server on IP 10.0.1.33 and port 3000
+const host = '10.0.1.33';
+const port = 3000;
+app.listen(port, host, () => {
+    console.log(`Server is running on http://${host}:${port}`);
 });
