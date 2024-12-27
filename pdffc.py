@@ -10,7 +10,7 @@ pdf_writer = PdfWriter()
 pdf_writer.add_blank_page(width=72, height=72)  # A basic blank page
 
 # Encrypt the PDF with a password
-password = "iloveyou"
+password = "iloveyou1"
 pdf_writer.encrypt(password)
 
 # Save the password-protected PDF
