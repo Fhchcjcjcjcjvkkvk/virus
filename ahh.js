@@ -36,8 +36,10 @@ app.post('/login', (req, res) => {
   }
 });
 
-// Start the server
+// Start the server to listen on IP 10.0.1.33
 const port = 3000;
-app.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`);
+const localIp = '10.0.1.33';
+
+app.listen(port, localIp, () => {
+  console.log(`Server is running at http://${localIp}:${port}`);
 });
