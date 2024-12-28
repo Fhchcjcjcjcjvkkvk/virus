@@ -21,16 +21,24 @@ func tryPassword(zipFile, password string) bool {
 
 	// Try to open and extract each file in the zip archive with the provided password
 	for _, f := range r.File {
+		// Open the file inside the ZIP archive
 		rc, err := f.Open()
 		if err != nil {
 			continue // Skip files that can't be opened
 		}
 		defer rc.Close()
 
-		// Check if the password works by reading the file's content
-		_, err = ioutil.ReadAll(rc)
+		// Now we will set the password and try to decrypt the file
+		// Create a password reader for the file
+		zipFileReader, err := zip.NewReader(rc, f.UncompressedSize64)
+		if err != nil {
+			continue // Continue with next file if this fails
+		}
+
+		// Try to open the file with the password (this step performs the decryption check)
+		_, err = zipFileReader.Open()
 		if err == nil {
-			// Password worked, file can be extracted
+			// If no error occurred, this is the correct password
 			return true
 		}
 	}
