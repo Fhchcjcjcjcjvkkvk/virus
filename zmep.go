@@ -26,15 +26,15 @@ func tryPassword(zipPath, password string) bool {
 		// Try to open the file with the given password
 		rc, err := f.Open()
 		if err != nil {
-			log.Printf("Failed to open file %s with password %s: %s\n", f.Name, password, err)
+			log.Printf("Failed to open file %s with password '%s': %s\n", f.Name, password, err)
 			continue
 		}
-		rc.Close()
-		// If no error, password is correct
-		log.Printf("Successfully opened file %s with password %s\n", f.Name, password)
+		rc.Close() // Close the file once opened
+		// If we reached here, the password worked for at least one file in the zip
+		log.Printf("Successfully opened file %s with password '%s'\n", f.Name, password)
 		return true
 	}
-	return false
+	return false // If we reach here, the password did not work
 }
 
 func main() {
@@ -69,12 +69,12 @@ func main() {
 		}
 
 		// Debugging: Print out the current password being tested
-		fmt.Printf("Trying password: %s\n", password)
+		fmt.Printf("Trying password: '%s'\n", password)
 
 		// Try the password on the zip file
 		if tryPassword(zipFilePath, password) {
 			// Password found
-			fmt.Printf("KEY FOUND: %s\n", password)
+			fmt.Printf("KEY FOUND: '%s'\n", password)
 			return
 		}
 	}
