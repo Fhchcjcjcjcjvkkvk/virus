@@ -19,7 +19,7 @@ func tryPassword(zipFile, password string) bool {
 	}
 	defer r.Close()
 
-	// Try to open and extract each file in the zip archive with the provided password
+	// Attempt to extract the files with the provided password
 	for _, f := range r.File {
 		// Open the file inside the ZIP archive
 		rc, err := f.Open()
@@ -28,15 +28,14 @@ func tryPassword(zipFile, password string) bool {
 		}
 		defer rc.Close()
 
-		// Now we will set the password and try to decrypt the file
-		// Create a password reader for the file
-		zipFileReader, err := zip.NewReader(rc, f.UncompressedSize64)
-		if err != nil {
-			continue // Continue with next file if this fails
+		// Try decrypting the file with the provided password
+		// We use the Decrypt method provided by the alexmullins/zip package
+		if err := f.SetPassword(password); err != nil {
+			continue // If password is incorrect, continue with the next one
 		}
 
-		// Try to open the file with the password (this step performs the decryption check)
-		_, err = zipFileReader.Open()
+		// Read the file content (this will succeed if the password is correct)
+		_, err = ioutil.ReadAll(rc)
 		if err == nil {
 			// If no error occurred, this is the correct password
 			return true
