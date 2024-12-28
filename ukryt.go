@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/alexmullins/zip"
 )
@@ -54,15 +55,14 @@ func main() {
 	}
 
 	// Split the password list into individual passwords (by lines)
-	passwordsList := string(passwords)
-	passwordsLines := []string{}
-	for _, line := range passwordsList {
-		passwordsLines = append(passwordsLines, line)
-	}
+	passwordsLines := strings.Split(string(passwords), "\n")
 
 	// Try each password from the list
 	for _, password := range passwordsLines {
-		password = password // Trim any whitespace
+		password = strings.TrimSpace(password) // Trim any whitespace from the password
+		if password == "" {                    // Skip empty lines
+			continue
+		}
 		if tryPassword(zipFilePath, password) {
 			fmt.Println("KEY FOUND:", password)
 			return
