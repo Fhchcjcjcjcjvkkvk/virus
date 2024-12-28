@@ -6,7 +6,6 @@ import (
 	"github.com/alexmullins/zip"
 	"io/ioutil"
 	"log"
-	"os"
 	"strings"
 )
 
