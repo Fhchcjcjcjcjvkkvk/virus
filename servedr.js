@@ -1,27 +1,43 @@
-// server.js
 const express = require('express');
-const path = require('path');
+const bodyParser = require('body-parser');
+
 const app = express();
-const port = 3000;
 
-app.use(express.static('public')); // pro servírování statických souborů (HTML, JS, CSS)
-app.use(express.urlencoded({ extended: true })); // pro zpracování formulářových dat
+// Middleware to parse URL-encoded data
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// Základní stránka
+// Set up a simple route to display the login form
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+  res.send(`
+    <html>
+      <body>
+        <h2>Login</h2>
+        <form method="POST" action="/login">
+          <label for="username">Username:</label>
+          <input type="text" id="username" name="username" required><br><br>
+          <label for="password">Password:</label>
+          <input type="password" id="password" name="password" required><br><br>
+          <button type="submit">Login</button>
+        </form>
+      </body>
+    </html>
+  `);
 });
 
-// Zpracování přihlášení
+// Handle login POST request
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
+
+  // Check if the username and password match the credentials
   if (username === 'admin' && password === 'password1') {
-    res.send('<h1>Úspěšně přihlášeno!</h1>');
+    res.send('<h2>Login successful!</h2>');
   } else {
-    res.send('<h1>Chybné uživatelské jméno nebo heslo</h1>');
+    res.send('<h2>Invalid username or password.</h2>');
   }
 });
 
+// Start the server
+const port = 3000;
 app.listen(port, () => {
-  console.log(`Server běží na http://localhost:${port}`);
+  console.log(`Server is running at http://localhost:${port}`);
 });
