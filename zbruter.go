@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 	"github.com/alexmullins/zip"
-	"io"
 	"strings"
 	"errors"
 )
