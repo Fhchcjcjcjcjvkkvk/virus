@@ -14,11 +14,11 @@ func main() {
 	username := flag.String("l", "", "Username to test")
 	passwordList := flag.String("P", "", "Path to password list")
 	url := flag.String("url", "", "Target URL")
-	successRedirect := flag.String("--redirect", "", "Success redirect URL")
+	successRedirect := flag.String("redirect", "", "Success redirect URL")
 	flag.Parse()
 
 	if *username == "" || *passwordList == "" || *url == "" || *successRedirect == "" {
-		fmt.Println("Usage: hydra2.go -l username -P passwordlist url --redirect success_redirect_url")
+		fmt.Println("Usage: hydra2.go -l username -P passwordlist -url target_url -redirect success_redirect_url")
 		os.Exit(1)
 	}
 
