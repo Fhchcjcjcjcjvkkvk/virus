@@ -1,4 +1,4 @@
-#include <libssh/libssh.h>
+#include "libssh.h"
 #include <iostream>
 
 int main() {
