@@ -4,25 +4,36 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"log"
-	"github.com/mholt/archiver/v3"
 	"time"
+	"github.com/alexmullins/zip"
+	"io"
 	"strings"
 	"errors"
 )
 
 // Try extracting the zip file with the given password
 func tryPassword(zipFilePath string, password string) (bool, error) {
-	// Try to extract the zip file using the password
-	err := archiver.Unarchive(zipFilePath, "./extracted", archiver.WithPassword(password))
+	// Open the ZIP file
+	zipFile, err := zip.OpenReader(zipFilePath)
 	if err != nil {
-		if strings.Contains(err.Error(), "password incorrect") {
-			// If the error is related to wrong password, return false
-			return false, nil
-		}
-		// Other errors
 		return false, err
 	}
+	defer zipFile.Close()
+
+	// Iterate through the files in the ZIP archive
+	for _, file := range zipFile.File {
+		// Open the file inside the ZIP archive with the given password
+		rc, err := file.Open()
+		if err != nil {
+			if strings.Contains(err.Error(), "password incorrect") {
+				// If the error is related to wrong password, return false
+				return false, nil
+			}
+			return false, err
+		}
+		rc.Close() // Close the file immediately (we don't need to extract it)
+	}
+	// If we reach here, the password worked
 	return true, nil
 }
 
