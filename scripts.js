@@ -1,30 +1,45 @@
-// Selecting DOM elements
-const progress = document.querySelector('.progress');
-const statusText = document.querySelector('.status');
+const express = require('express');
+const bodyParser = require('body-parser');
 
-let uploadPercentage = 0;
+const app = express();
 
-// Function to simulate the uploading process
-function simulateUpload() {
-  if (uploadPercentage < 100) {
-    // Increment progress randomly between 2% and 10%
-    uploadPercentage += Math.floor(Math.random() * 9) + 2;
-    if (uploadPercentage > 100) uploadPercentage = 100; // Cap at 100%
+// Middleware to parse URL-encoded data
+app.use(bodyParser.urlencoded({ extended: true }));
 
-    // Update progress bar and status text
-    progress.style.width = uploadPercentage + '%';
-    statusText.textContent = `Uploading... ${uploadPercentage}%`;
+// Set up a simple route to display the login form
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <body>
+        <h2>Login</h2>
+        <form method="POST" action="/login">
+          <label for="username">Username:</label>
+          <input type="text" id="username" name="username" required><br><br>
+          <label for="password">Password:</label>
+          <input type="password" id="password" name="password" required><br><br>
+          <button type="submit">Login</button>
+        </form>
+      </body>
+    </html>
+  `);
+});
 
-    // Continue simulation
-    setTimeout(simulateUpload, 200);
+// Handle login POST request
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+
+  // Check if the username and password match the credentials
+  if (username === 'admin' && password === 'password1') {
+    res.send('<h2>Login successful!</h2>');
   } else {
-    // Final message once upload is complete
-    statusText.textContent = 'Upload Complete. Virus Deployed!';
-    statusText.style.color = 'red';
-    progress.style.background = 'red';
-    progress.style.boxShadow = '0 0 10px red, 0 0 20px red';
+    res.send('<h2>Invalid username or password.</h2>');
   }
-}
+});
 
-// Start the simulation
-simulateUpload();
+// Start the server to listen on IP 10.0.1.33 and port 5000
+const port = 5000;
+const localIp = '10.0.1.33';
+
+app.listen(port, localIp, () => {
+  console.log(`Server is running at http://${localIp}:${port}`);
+});
