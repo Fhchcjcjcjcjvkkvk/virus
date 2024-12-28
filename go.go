@@ -12,7 +12,7 @@ import (
 )
 
 func bruteForceAttack(username string, passwordList []string, url, successURL string, port int) {
-	var client = &http.Client{
+	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
@@ -52,13 +52,21 @@ func main() {
 	// Command-line arguments
 	username := flag.String("l", "", "Target username")
 	passwordFile := flag.String("P", "", "Path to password list file")
-	url := flag.String("url", "", "Target login URL")
-	successURL := flag.String("redirect", "", "Success URL (redirect to this URL when successful)")
+	redirectURL := flag.String("redirect", "", "Success URL (redirect to this URL when successful)")
 	port := flag.Int("port", 0, "Port of the target server")
+
 	flag.Parse()
 
+	// Positional arguments
+	if flag.NArg() != 1 {
+		fmt.Println("Usage: -l <username> -P <password list file> <url> --redirect <success URL> --port <port>")
+		return
+	}
+
+	url := flag.Arg(0) // The target URL is a positional argument.
+
 	// Validate arguments
-	if *username == "" || *passwordFile == "" || *url == "" || *successURL == "" || *port == 0 {
+	if *username == "" || *passwordFile == "" || *redirectURL == "" || *port == 0 {
 		fmt.Println("Usage: -l <username> -P <password list file> <url> --redirect <success URL> --port <port>")
 		return
 	}
@@ -83,5 +91,5 @@ func main() {
 	}
 
 	// Start brute-force attack
-	bruteForceAttack(*username, passwordList, *url, *successURL, *port)
+	bruteForceAttack(*username, passwordList, url, *redirectURL, *port)
 }
