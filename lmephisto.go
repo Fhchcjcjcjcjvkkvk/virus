@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
-	"golang.org/x/net/html"
 )
 
 func parseArguments() (string, string, string, string, int) {
@@ -44,58 +44,55 @@ func getLoginFormDetails(url string) (string, string, string, string, string) {
 		return "", "", "", "", ""
 	}
 
-	document, err := html.Parse(strings.NewReader(string(body)))
-	if err != nil {
-		fmt.Println("Error parsing HTML.")
+	// Convert body to string
+	bodyStr := string(body)
+
+	// Find the form action
+	actionURL := getFormAction(bodyStr, url)
+	if actionURL == "" {
+		fmt.Println("No form action URL found.")
 		return "", "", "", "", ""
 	}
 
-	var actionURL, method, usernameField, passwordField, csrfToken string
-	var parseForm func(*html.Node)
-	parseForm = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "form" {
-			for _, attr := range n.Attr {
-				if attr.Key == "action" {
-					actionURL = attr.Val
-				}
-				if attr.Key == "method" {
-					method = strings.ToUpper(attr.Val)
-				}
-			}
+	// Find the method (POST or GET)
+	method := getFormMethod(bodyStr)
 
-			if actionURL == "" {
-				actionURL = url
-			}
-
-			for _, child := range n.Children {
-				if child.Type == html.ElementNode && child.Data == "input" {
-					name := ""
-					value := ""
-					for _, attr := range child.Attr {
-						if attr.Key == "name" {
-							name = attr.Val
-						}
-						if attr.Key == "value" {
-							value = attr.Val
-						}
-					}
-
-					switch {
-					case strings.Contains(name, "user") || strings.Contains(name, "login"):
-						usernameField = name
-					case strings.Contains(name, "pass") || strings.Contains(name, "password"):
-						passwordField = name
-					case strings.Contains(name, "csrf"):
-						csrfToken = value
-					}
-				}
-			}
-		}
-	}
-
-	parseForm(document)
+	// Find the input fields (username, password, csrf)
+	usernameField := getInputField(bodyStr, "user", "login")
+	passwordField := getInputField(bodyStr, "pass", "password")
+	csrfToken := getInputField(bodyStr, "csrf", "")
 
 	return actionURL, method, usernameField, passwordField, csrfToken
+}
+
+func getFormAction(body, defaultURL string) string {
+	re := regexp.MustCompile(`<form[^>]*action=["']([^"']+)["'][^>]*>`)
+	match := re.FindStringSubmatch(body)
+	if len(match) > 1 {
+		return match[1]
+	}
+	return defaultURL
+}
+
+func getFormMethod(body string) string {
+	re := regexp.MustCompile(`<form[^>]*method=["']([^"']+)["'][^>]*>`)
+	match := re.FindStringSubmatch(body)
+	if len(match) > 1 {
+		return strings.ToUpper(match[1])
+	}
+	return "POST"
+}
+
+func getInputField(body, field1, field2 string) string {
+	re := regexp.MustCompile(`<input[^>]*name=["']([^"']+)["'][^>]*>`)
+	matches := re.FindAllStringSubmatch(body, -1)
+	for _, match := range matches {
+		name := match[1]
+		if strings.Contains(name, field1) || (field2 != "" && strings.Contains(name, field2)) {
+			return name
+		}
+	}
+	return ""
 }
 
 func attemptLogin(client *http.Client, actionURL, method, usernameField, passwordField, csrfToken, username, password, redirectURL string) bool {
