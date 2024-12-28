@@ -16,20 +16,22 @@ func tryPassword(zipPath, password string) bool {
 	// Open the zip file
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
-		log.Println("Error opening zip file:", err)
+		log.Printf("Error opening zip file %s: %s\n", zipPath, err)
 		return false
 	}
 	defer r.Close()
 
 	// Attempt to open each file in the archive with the provided password
 	for _, f := range r.File {
+		// Try to open the file with the given password
 		rc, err := f.Open()
 		if err != nil {
-			// Print debug message if the password is incorrect
-			log.Printf("Failed to open file %s with password %s\n", f.Name, password)
+			log.Printf("Failed to open file %s with password %s: %s\n", f.Name, password, err)
 			continue
 		}
 		rc.Close()
+		// If no error, password is correct
+		log.Printf("Successfully opened file %s with password %s\n", f.Name, password)
 		return true
 	}
 	return false
@@ -42,7 +44,7 @@ func main() {
 
 	// Ensure that the password file path and the zip file path are provided
 	if *passwordFileFlag == "" || len(flag.Args()) < 1 {
-		fmt.Println("Usage: zmephisto.go -P <password-file> <zip-file>")
+		fmt.Println("Usage: go run brute.go -P <password-file> <zip-file>")
 		os.Exit(1)
 	}
 
@@ -69,8 +71,10 @@ func main() {
 		// Debugging: Print out the current password being tested
 		fmt.Printf("Trying password: %s\n", password)
 
+		// Try the password on the zip file
 		if tryPassword(zipFilePath, password) {
-			fmt.Println("KEY FOUND:", password)
+			// Password found
+			fmt.Printf("KEY FOUND: %s\n", password)
 			return
 		}
 	}
