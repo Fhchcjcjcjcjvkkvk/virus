@@ -47,7 +47,7 @@ def main():
     parser = argparse.ArgumentParser(description="SMTP Brute Force Tool")
     parser.add_argument("-l", "--login", required=True, help="Username for the SMTP login")
     parser.add_argument("-P", "--passwordlist", required=True, help="Path to the password list file")
-    parser.add_argument("host", help="The target SMTP server (e.g., smtp.example.com)")
+    parser.add_argument("url", help="The target SMTP server (e.g., smtp.example.com)")
 
     args = parser.parse_args()
 
