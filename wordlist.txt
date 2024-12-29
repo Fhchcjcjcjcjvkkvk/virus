@@ -1,5 +1,4 @@
 retriever
-password123
 resurrection
 qwerty69
 promises
