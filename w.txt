@@ -1,6 +1,5 @@
 retriever
 resurrection
-password123
 qwerty69
 promises
 priscila
