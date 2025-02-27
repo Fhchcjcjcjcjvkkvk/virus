@@ -4,6 +4,8 @@ import threading
 import time
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
+import random
+from fake_useragent import UserAgent  # Importing the fake_useragent library
 
 # Function to parse arguments
 def parse_arguments():
@@ -13,6 +15,7 @@ def parse_arguments():
     parser.add_argument("--redirect", required=True, help="URL to redirect to, indicating a successful login")
     parser.add_argument("wordlist", help="Path to the wordlist file containing passwords")
     parser.add_argument("--threads", type=int, default=1, help="Number of threads to use (default: 1)")
+    parser.add_argument("--random-agent", action="store_true", help="Use a random user agent for each request")
     return parser.parse_args()
 
 # Function to extract the form and CSRF token from the login page
@@ -66,6 +69,7 @@ def attempt_login(session, action_url, method, username_field, password_field, c
             return True
         else:
             print(f"[FAILURE] Username: {username}, Password: {password}")
+
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] Request error: {e}")
 
@@ -91,10 +95,17 @@ def main():
     if not action_url:
         return
 
+    # Use fake user-agent if --random-agent is specified
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "Content-Type": "application/x-www-form-urlencoded",
     }
+
+    if args.random_agent:
+        # Instantiate the UserAgent object
+        ua = UserAgent()
+        headers["User-Agent"] = ua.random  # Random user agent for each request
+    else:
+        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
     threads = []
     chunk_size = len(passwords) // args.threads
