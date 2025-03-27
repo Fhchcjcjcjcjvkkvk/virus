@@ -6,103 +6,154 @@
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <getopt.h>
+#include <signal.h>
+#include <math.h>
+#include <float.h>
+#include <ctype.h>
 
-#define WPA_KEY_LEN 32
-#define HASH_ITERATIONS 4096
+#define MAX_PASS_LEN 64
+#define BSSID_LEN 6
+#define MAX_SSID_LEN 32
 
-// Structure to hold WPA2 handshake data
+typedef unsigned char byte;
+
+// Struktura pro uchování handshake
 typedef struct {
-    unsigned char anonce[32];
-    unsigned char snonce[32];
-    unsigned char mic[16];
-    char ssid[32];
-    unsigned char bssid[6];
-} WPA2Handshake;
+    byte anonce[32];
+    byte snonce[32];
+    byte mic[16];
+    byte key_data[32];
+} handshake_t;
 
-// Function to derive PMK from passphrase
-void derive_pmk(const char *passphrase, const char *ssid, unsigned char *pmk) {
-    PKCS5_PBKDF2_HMAC_SHA1(passphrase, strlen(passphrase), (const unsigned char *)ssid, strlen(ssid), HASH_ITERATIONS, WPA_KEY_LEN, pmk);
-}
-
-// Function to calculate MIC
-typedef struct {
-    unsigned char key[WPA_KEY_LEN];
-} WPA2Key;
-
-void calculate_mic(const unsigned char *ptk, const unsigned char *data, size_t data_len, unsigned char *mic) {
-    HMAC(EVP_sha1(), ptk, WPA_KEY_LEN, data, data_len, mic, NULL);
-}
-
-// Function to process the .cap file and extract handshake
-int process_pcap(const char *filename, WPA2Handshake *handshake) {
+// Funkce pro načítání handshake z pcap souboru
+int read_pcap_handshake(const char *filename, handshake_t *handshake) {
+    pcap_t *handle;
     char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t *handle = pcap_open_offline(filename, errbuf);
-    if (!handle) {
-        fprintf(stderr, "Error opening capture file: %s\n", errbuf);
+    struct pcap_pkthdr header;
+    const u_char *packet;
+    int found = 0;
+
+    handle = pcap_open_offline(filename, errbuf);
+    if (handle == NULL) {
+        fprintf(stderr, "Chyba při otevírání pcap souboru: %s\n", errbuf);
         return -1;
     }
-    
-    struct pcap_pkthdr *header;
-    const u_char *packet;
-    
-    while (pcap_next_ex(handle, &header, &packet) == 1) {
-        if (header->caplen >= 100) {  // Adjust based on expected handshake size
-            memcpy(handshake->bssid, packet + 10, 6);
-            memcpy(handshake->anonce, packet + 50, 32);
-            memcpy(handshake->snonce, packet + 90, 32);
-            memcpy(handshake->mic, packet + 130, 16);
+
+    // Procházení paketů a hledání WPA handshake
+    while ((packet = pcap_next(handle, &header)) != NULL) {
+        if (found) break;
+        // Detekce WPA2 handshake (v praxi bude nutné detekovat specifické pakety)
+        if (/* podmínka pro detekci WPA handshake */) {
+            memcpy(handshake->anonce, packet + 0x10, 32);  // Ukázka adresování, změňte podle skutečné struktury
+            memcpy(handshake->snonce, packet + 0x30, 32);
+            memcpy(handshake->mic, packet + 0x50, 16);
+            found = 1;
         }
     }
-    
+
     pcap_close(handle);
-    return 0;
+    return found ? 0 : -1;
 }
 
-// Function to attempt cracking
-int crack_wpa2(const char *pcap_file, const char *wordlist) {
-    WPA2Handshake handshake;
-    if (process_pcap(pcap_file, &handshake) != 0) {
-        fprintf(stderr, "Failed to process capture file.\n");
-        return -1;
-    }
+// Funkce pro výpočet PMK z hesla a SSID
+void calculate_pmk(const char *password, const char *ssid, byte *pmk) {
+    const byte *ssid_bytes = (const byte *)ssid;
+    const byte *password_bytes = (const byte *)password;
+
+    PKCS5_PBKDF2_HMAC(password_bytes, strlen(password), ssid_bytes, strlen(ssid), 4096, EVP_sha1(), 32, pmk);
+}
+
+// Funkce pro ověření hesla pomocí PMK a handshake
+int verify_password(const handshake_t *handshake, const byte *pmk) {
+    unsigned char calculated_mic[16];
     
-    FILE *file = fopen(wordlist, "r");
+    // Vytvoření HMAC pro ověření MIC
+    HMAC_CTX *ctx = HMAC_CTX_new();
+    HMAC_Init_ex(ctx, pmk, 32, EVP_sha1(), NULL);
+    HMAC_Update(ctx, handshake->anonce, 32);
+    HMAC_Update(ctx, handshake->snonce, 32);
+    HMAC_Final(ctx, calculated_mic, NULL);
+    HMAC_CTX_free(ctx);
+
+    // Porovnání MIC hodnot
+    if (memcmp(handshake->mic, calculated_mic, 16) == 0) {
+        return 1;  // Heslo je správné
+    }
+    return 0;  // Heslo není správné
+}
+
+// Funkce pro slovníkový útok
+int dictionary_attack(const char *filename, const char *ssid, const handshake_t *handshake) {
+    FILE *file = fopen(filename, "r");
     if (!file) {
-        fprintf(stderr, "Error opening wordlist file.\n");
+        fprintf(stderr, "Nelze otevřít slovníkový soubor.\n");
         return -1;
     }
-    
-    char passphrase[256];
-    unsigned char pmk[WPA_KEY_LEN];
-    unsigned char mic[16];
-    
-    while (fgets(passphrase, sizeof(passphrase), file)) {
-        // Remove newline character if it exists
-        passphrase[strcspn(passphrase, "\n")] = 0;
-        printf("Trying Passphrase: %s\n", passphrase);
-        derive_pmk(passphrase, handshake.ssid, pmk);
-        
-        calculate_mic(pmk, handshake.anonce, 32, mic);
-        if (memcmp(mic, handshake.mic, 16) == 0) {
-            printf("KEY FOUND! [%s]\n", passphrase);
+
+    char password[MAX_PASS_LEN];
+    byte pmk[32];
+
+    // Procházení slovníku
+    while (fgets(password, MAX_PASS_LEN, file)) {
+        password[strcspn(password, "\n")] = 0; // Odstranění nového řádku
+
+        // Výpočet PMK pro aktuální heslo
+        calculate_pmk(password, ssid, pmk);
+
+        // Ověření hesla
+        if (verify_password(handshake, pmk)) {
+            printf("KEY FOUND!  %s\n", password);
             fclose(file);
             return 0;
         }
+        printf("Trying Passphrase: %s\n", password);
     }
-    
-    printf("KEY NOT FOUND\n");
+
+    printf("KEY NOT FOUND - Heslo nebylo nalezeno ve slovníku.\n");
     fclose(file);
-    return 1;
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 4) {
-        fprintf(stderr, "Usage: %s <capture.pcap> -P <wordlist>\n", argv[0]);
-        return 1;
+    char *capture_file = NULL;
+    char *wordlist_file = NULL;
+    char *bssid = NULL;
+    char *ssid = NULL;
+
+    // Parsování příkazových argumentů
+    int opt;
+    while ((opt = getopt(argc, argv, "f:w:b:s:")) != -1) {
+        switch (opt) {
+            case 'f':
+                capture_file = optarg;
+                break;
+            case 'w':
+                wordlist_file = optarg;
+                break;
+            case 'b':
+                bssid = optarg;
+                break;
+            case 's':
+                ssid = optarg;
+                break;
+            default:
+                fprintf(stderr, "Usage: %s -f capture_file -w wordlist_file -b bssid -s ssid\n", argv[0]);
+                exit(EXIT_FAILURE);
+        }
     }
-    
-    const char *pcap_file = argv[1];
-    const char *wordlist = argv[3];
-    
-    return crack_wpa2(pcap_file, wordlist);
+
+    if (!capture_file || !wordlist_file || !ssid) {
+        fprintf(stderr, "Musíte zadat capture soubor, slovníkový soubor a SSID.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Načítání handshake z pcap souboru
+    handshake_t handshake;
+    if (read_pcap_handshake(capture_file, &handshake) != 0) {
+        fprintf(stderr, "Chyba při čtení handshake.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Provedení slovníkového útoku
+    return dictionary_attack(wordlist_file, ssid, &handshake);
 }
