@@ -67,13 +67,14 @@ void calculate_pmk(const char *password, const char *ssid, byte *pmk) {
 int verify_password(const handshake_t *handshake, const byte *pmk) {
     unsigned char calculated_mic[16];
     
-    // Vytvoření HMAC pro ověření MIC
-    HMAC_CTX *ctx = HMAC_CTX_new();
-    HMAC_Init_ex(ctx, pmk, 32, EVP_sha1(), NULL);
-    HMAC_Update(ctx, handshake->anonce, 32);
-    HMAC_Update(ctx, handshake->snonce, 32);
-    HMAC_Final(ctx, calculated_mic, NULL);
-    HMAC_CTX_free(ctx);
+    // Vytvoření HMAC kontextu bez použití deprecated funkcí
+    HMAC_CTX ctx;
+    HMAC_CTX_init(&ctx);  // Nový způsob inicializace
+    HMAC_Init_ex(&ctx, pmk, 32, EVP_sha1(), NULL);
+    HMAC_Update(&ctx, handshake->anonce, 32);
+    HMAC_Update(&ctx, handshake->snonce, 32);
+    HMAC_Final(&ctx, calculated_mic, NULL);
+    HMAC_CTX_cleanup(&ctx);  // Nový způsob uvolnění kontextu
 
     // Porovnání MIC hodnot
     if (memcmp(handshake->mic, calculated_mic, 16) == 0) {
@@ -102,7 +103,7 @@ int dictionary_attack(const char *filename, const char *ssid, const handshake_t 
 
         // Ověření hesla
         if (verify_password(handshake, pmk)) {
-            printf("KEY FOUND!  %s\n", password);
+            printf("KEY FOUND! Heslo: %s\n", password);
             fclose(file);
             return 0;
         }
