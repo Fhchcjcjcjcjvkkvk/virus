@@ -86,7 +86,6 @@ int parse_pcap(const char *filename) {
 }
 
 // Function to perform real statistical analysis on IV values
-// This analyzes the captured IVs to identify patterns based on known weaknesses in WEP encryption
 int analyze_iv_patterns() {
     unsigned int iv_counts[IV_PATTERN_SIZE] = {0};  // Count occurrences of IVs
 
@@ -151,6 +150,8 @@ int main(int argc, char *argv[]) {
     if (parse_pcap(argv[1]) == -1) {
         return -1;
     }
+
+    printf("Captured %d packets\n", packet_count);  // Print number of captured packets
 
     // Analyze the IV patterns
     if (analyze_iv_patterns() != 1) {
