@@ -27,13 +27,13 @@ pcap_t *handle = NULL;
 void rc4_decrypt(const unsigned char *key, const unsigned char *data, size_t data_len, unsigned char *out) {
     EVP_CIPHER_CTX *ctx;
     int len;
-    
+
     // Create and initialize the context
     if (!(ctx = EVP_CIPHER_CTX_new())) {
         fprintf(stderr, "Error creating context\n");
         exit(1);
     }
-    
+
     // Initialize RC4 cipher (EVP_rc4 is supported in OpenSSL 3.0)
     if (EVP_EncryptInit_ex(ctx, EVP_rc4(), NULL, key, NULL) != 1) {
         fprintf(stderr, "Error initializing cipher\n");
@@ -76,6 +76,7 @@ int parse_pcap(const char *filename) {
             // Extract IV and ciphertext
             memcpy(packets[packet_count].iv, data + HEADER_SIZE, IV_SIZE);
             memcpy(packets[packet_count].ciphertext, data + HEADER_SIZE + IV_SIZE, header.len - HEADER_SIZE - IV_SIZE);
+            printf("Captured packet %d: IV = %02X%02X%02X\n", packet_count + 1, packets[packet_count].iv[0], packets[packet_count].iv[1], packets[packet_count].iv[2]);
             packet_count++;
         }
     }
@@ -116,13 +117,15 @@ int ptw_crack_key(unsigned char *key) {
         unsigned int iv_value = (packets[i].iv[0] << 16) | (packets[i].iv[1] << 8) | packets[i].iv[2];
 
         // Start building key guesses based on the IV patterns and analysis
-        // You would need to mathematically extract key components based on IV relationships
         candidate_key[i % WEP_KEY_SIZE] = iv_value & 0xFF;
     }
 
     // After gathering enough information, try to decrypt using the candidate key
     unsigned char decrypted_data[256];
     rc4_decrypt((unsigned char *)candidate_key, packets[0].ciphertext, sizeof(packets[0].ciphertext), decrypted_data);
+
+    // Print decrypted data for debugging
+    printf("Decrypted data (first byte): %02X\n", decrypted_data[0]);
 
     // Check if the decryption was successful by verifying output
     if (decrypted_data[0] == 0xFF) {  // Simple check for valid plaintext
