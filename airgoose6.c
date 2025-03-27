@@ -1,5 +1,5 @@
 #include <pcap.h>
-#include <openssl/rc4.h>
+#include <openssl/evp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,11 +23,36 @@ struct WEPPacket packets[MAX_IVS];
 int packet_count = 0;
 pcap_t *handle = NULL;
 
-// Function to decrypt data using RC4 (with OpenSSL)
+// Function to decrypt data using RC4 (with OpenSSL's EVP API)
 void rc4_decrypt(const unsigned char *key, const unsigned char *data, size_t data_len, unsigned char *out) {
-    RC4_KEY rc4_key;
-    RC4_set_key(&rc4_key, WEP_KEY_SIZE, key);
-    RC4(&rc4_key, data_len, data, out);
+    EVP_CIPHER_CTX *ctx;
+    int len;
+    
+    // Create and initialize the context
+    if (!(ctx = EVP_CIPHER_CTX_new())) {
+        fprintf(stderr, "Error creating context\n");
+        exit(1);
+    }
+    
+    // Initialize RC4 cipher (EVP_rc4 is supported in OpenSSL 3.0)
+    if (EVP_EncryptInit_ex(ctx, EVP_rc4(), NULL, key, NULL) != 1) {
+        fprintf(stderr, "Error initializing cipher\n");
+        exit(1);
+    }
+
+    // Decrypt the data
+    if (EVP_EncryptUpdate(ctx, out, &len, data, data_len) != 1) {
+        fprintf(stderr, "Error during decryption\n");
+        exit(1);
+    }
+
+    // Finalize the decryption
+    if (EVP_EncryptFinal_ex(ctx, out + len, &len) != 1) {
+        fprintf(stderr, "Error during finalization of decryption\n");
+        exit(1);
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
 }
 
 // Function to parse pcap file and capture WEP packets
