@@ -1,7 +1,28 @@
 #include <iostream>
 #include <pcap.h>
 #include <string>
-#include <cstdlib>
+#include <vector>
+
+void listInterfaces() {
+    pcap_if_t *alldevs;
+    pcap_if_t *d;
+    char errbuf[PCAP_ERRBUF_SIZE];
+
+    // Get the list of all network devices
+    if (pcap_findalldevs(&alldevs, errbuf) == -1) {
+        std::cerr << "Error finding devices: " << errbuf << std::endl;
+        return;
+    }
+
+    std::cout << "Available interfaces:" << std::endl;
+    int i = 1;
+    for (d = alldevs; d != NULL; d = d->next) {
+        std::cout << i++ << ". " << d->name << std::endl;
+    }
+
+    // Free the device list
+    pcap_freealldevs(alldevs);
+}
 
 void startPromiscuousMode(const std::string &interfaceName) {
     pcap_t *handle;
@@ -47,21 +68,52 @@ void stopPromiscuousMode(const std::string &interfaceName) {
     pcap_close(handle);
 }
 
-int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <interface> <start|off>" << std::endl;
+int main() {
+    pcap_if_t *alldevs;
+    pcap_if_t *d;
+    char errbuf[PCAP_ERRBUF_SIZE];
+
+    // Get the list of all network devices
+    if (pcap_findalldevs(&alldevs, errbuf) == -1) {
+        std::cerr << "Error finding devices: " << errbuf << std::endl;
         return 1;
     }
 
-    std::string interfaceName = argv[1];
-    std::string command = argv[2];
+    // List available interfaces
+    listInterfaces();
 
-    if (command == "start") {
+    // Prompt the user to select an interface
+    int choice;
+    std::cout << "Enter the number of the interface you want to use: ";
+    std::cin >> choice;
+
+    pcap_if_t *selectedDev = alldevs;
+    int i = 1;
+    while (selectedDev != NULL && i < choice) {
+        selectedDev = selectedDev->next;
+        i++;
+    }
+
+    if (selectedDev == NULL) {
+        std::cerr << "Invalid choice, exiting." << std::endl;
+        pcap_freealldevs(alldevs);
+        return 1;
+    }
+
+    std::string interfaceName = selectedDev->name;
+    pcap_freealldevs(alldevs);
+
+    // Ask the user if they want to start or stop promiscuous mode
+    std::string action;
+    std::cout << "Do you want to enable or disable promiscuous mode on " << interfaceName << "? (start/stop): ";
+    std::cin >> action;
+
+    if (action == "start") {
         startPromiscuousMode(interfaceName);
-    } else if (command == "off") {
+    } else if (action == "stop") {
         stopPromiscuousMode(interfaceName);
     } else {
-        std::cerr << "Invalid command. Use 'start' or 'off'." << std::endl;
+        std::cerr << "Invalid command. Use 'start' or 'stop'." << std::endl;
         return 1;
     }
 
