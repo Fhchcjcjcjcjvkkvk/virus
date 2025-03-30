@@ -1,6 +1,6 @@
+#include <pcap.h>         // Make sure to include pcap first
 #include <iostream>
-#include <pcap.h>
-#include <string>
+#include <string>          // Include string
 #include <thread>
 #include <windows.h>
 
