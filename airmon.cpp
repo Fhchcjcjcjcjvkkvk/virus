@@ -1,8 +1,9 @@
-#include <pcap.h>         // Make sure to include pcap first
+#include <pcap.h>       // Include pcap.h first
 #include <iostream>
-#include <string>          // Include string
-#include <thread>
-#include <windows.h>
+#include <string>        // Include string for std::string
+#include <windows.h>     // Include windows.h after C++ headers
+
+#define NOMINMAX         // Avoid min/max macro conflicts
 
 // Function to start promiscuous mode on the interface
 void startPromiscuousMode(const std::string& interface) {
@@ -15,13 +16,6 @@ void startPromiscuousMode(const std::string& interface) {
         return;
     }
 
-    // Set the interface into promiscuous mode
-    if (pcap_set_rfmon(handle, 1) != 0) {
-        std::cerr << "Failed to set promiscuous mode." << std::endl;
-        pcap_close(handle);
-        return;
-    }
-
     std::cout << "Promiscuous mode enabled on " << interface << std::endl;
     pcap_close(handle);
 }
@@ -30,17 +24,10 @@ void startPromiscuousMode(const std::string& interface) {
 void stopPromiscuousMode(const std::string& interface) {
     char errbuf[PCAP_ERRBUF_SIZE];
     
-    // Open the device for packet capture
-    pcap_t* handle = pcap_open_live(interface.c_str(), BUFSIZ, 1, 1000, errbuf);
+    // Open the device for packet capture in non-promiscuous mode
+    pcap_t* handle = pcap_open_live(interface.c_str(), BUFSIZ, 0, 1000, errbuf);
     if (handle == nullptr) {
         std::cerr << "Couldn't open device " << interface << ": " << errbuf << std::endl;
-        return;
-    }
-
-    // Set the interface into normal mode (disable promiscuous mode)
-    if (pcap_set_rfmon(handle, 0) != 0) {
-        std::cerr << "Failed to disable promiscuous mode." << std::endl;
-        pcap_close(handle);
         return;
     }
 
