@@ -95,9 +95,28 @@ def main():
         print("No handshake found in the .cap file.")
         return
 
+    # Print out the structure of the handshake to help find the SSID
+    print("Packet structure of the handshake:")
+    handshake.show()
+
     # Extract SSID (network name) from the handshake
-    ssid = handshake.info.decode('utf-8')  # Assuming SSID is in the 'info' field of the first EAPOL packet
-    print(f"SSID: {ssid}")
+    try:
+        # Attempt to extract SSID
+        ssid = handshake.info.decode('utf-8')  # This might need adjustment based on packet structure
+        print(f"SSID: {ssid}")
+    except AttributeError:
+        print("SSID not found in 'info' field. Attempting alternative extraction methods.")
+        # If no 'info' field, check for other potential places for SSID in the packet
+        ssid = None
+        # You can try extracting the SSID based on other fields or layers if necessary
+        for packet in rdpcap(args.handshake_file):
+            if packet.haslayer('Dot11Beacon'):
+                ssid = packet[Dot11Beacon].info.decode('utf-8', errors='ignore')
+                print(f"SSID found in Dot11Beacon: {ssid}")
+                break
+        if not ssid:
+            print("Could not extract SSID.")
+            return
 
     # Start dictionary attack
     password = dictionary_attack(args.wordlist, handshake, ssid)
