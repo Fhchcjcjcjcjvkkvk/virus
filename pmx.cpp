@@ -18,7 +18,7 @@ bool decrypt_pdf(const string &pdf_path, const string &password, const string &o
     try {
         PdfMemDocument doc;
         doc.Load(pdf_path.c_str(), password.c_str());
-        doc.Write(output_path.c_str());
+        doc.Save(output_path.c_str()); // Use Save instead of Write
         return true;
     } catch (PdfError &e) {
         return false;
