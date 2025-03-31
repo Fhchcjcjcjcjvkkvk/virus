@@ -9,8 +9,15 @@ def extract_psk_from_handshake(pcap_file, ssid):
     eapol_packets = []
     for pkt in packets:
         if pkt.haslayer(scapy.EAPOL) and pkt.haslayer(scapy.Dot11):
-            if pkt[scapy.Dot11].info.decode() == ssid:
-                eapol_packets.append(pkt)
+            # Check for SSID in Beacon or Probe Response packets
+            if pkt.haslayer(scapy.Dot11Beacon):
+                beacon_ssid = pkt[scapy.Dot11Beacon].info.decode(errors='ignore')
+                if beacon_ssid == ssid:
+                    eapol_packets.append(pkt)
+            elif pkt.haslayer(scapy.Dot11ProbeResp):
+                probe_ssid = pkt[scapy.Dot11ProbeResp].info.decode(errors='ignore')
+                if probe_ssid == ssid:
+                    eapol_packets.append(pkt)
     
     if len(eapol_packets) < 2:
         print("Insufficient EAPOL packets found. Unable to extract PSK.")
