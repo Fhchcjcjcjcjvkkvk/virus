@@ -1,36 +1,38 @@
 import argparse
 import pyshark
 
-def extract_psk_and_bssid(pcap_file):
-    capture = pyshark.FileCapture(pcap_file, display_filter="wpa")
-    bssid = None
-    psk = None
+def extract_psk_and_bssid(capture_file):
+    try:
+        # Open the pcap or cap file using pyshark
+        capture = pyshark.FileCapture(capture_file, display_filter="wlan.fc.type_subtype == 0x08")  # WPA Handshake filter
 
-    for packet in capture:
-        if hasattr(packet, 'wpa'):
-            # Check if this packet contains a WPA handshake or encrypted PSK information
-            if hasattr(packet.wpa, 'eapol'):
-                eapol = packet.wpa.eapol
-                if "Key Data" in eapol:
-                    psk = eapol["Key Data"]
-                    if not bssid:
-                        bssid = packet.wlan.bssid
-                    break  # Once PSK and BSSID are found, break loop
+        # Loop through each packet in the capture
+        for packet in capture:
+            # Check for handshake messages
+            if 'eapol' in packet:
+                # Extract the BSSID (MAC address of the AP)
+                bssid = packet.wlan.bssid
+                # Extract the encrypted PSK (this is part of the EAPOL message)
+                if 'wlan.eapol.key.iv' in packet:
+                    encrypted_psk = packet.wlan.eapol.key.iv  # Only get the encrypted part of the PSK
 
-    if bssid and psk:
-        print(f"BSSID: {bssid}")
-        print(f"PSK: {psk}")
-    else:
-        print("No WPA PSK information found in the capture file.")
+                    # Print the results
+                    print(f"BSSID: {bssid}")
+                    print(f"Encrypted PSK: {encrypted_psk}")
+                    return
+
+        print("No WPA handshake with PSK found in the capture file.")
+    except Exception as e:
+        print(f"Error processing capture file: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract BSSID and PSK from WPA capture file")
-    parser.add_argument("pcap_file", help="Path to the capture file (.pcap or .cap)")
-
+    # Set up argument parsing
+    parser = argparse.ArgumentParser(description="Extract BSSID and encrypted PSK from WPA handshake capture file.")
+    parser.add_argument("capture_file", help="Path to the .pcap or .cap handshake capture file")
     args = parser.parse_args()
-    pcap_file = args.pcap_file
 
-    extract_psk_and_bssid(pcap_file)
+    # Extract PSK and BSSID from the provided capture file
+    extract_psk_and_bssid(args.capture_file)
 
 if __name__ == "__main__":
     main()
