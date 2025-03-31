@@ -39,8 +39,8 @@ def derive_ptk(pmk, eapol_frame1, eapol_frame2):
     b = eapol_frame1.eth.dst
 
     # The first two bytes from the message
-    eapol_msg1 = bytes.fromhex(eapol_frame1.eapol.load)
-    eapol_msg2 = bytes.fromhex(eapol_frame2.eapol.load)
+    eapol_msg1 = bytes.fromhex(eapol_frame1.eapol.load) if hasattr(eapol_frame1.eapol, 'load') else b""
+    eapol_msg2 = bytes.fromhex(eapol_frame2.eapol.load) if hasattr(eapol_frame2.eapol, 'load') else b""
     
     # The PTK derivation uses both the MAC addresses of the AP and the client, and the message pairs
     data = mac_to_bytes(a) + mac_to_bytes(b) + eapol_msg1[:8] + eapol_msg2[:8]
@@ -86,23 +86,32 @@ def main():
         derived_psk = derive_psk(password, ssid)
 
         # Extract the MIC from the second EAPOL frame (actual extraction needed)
-        mic_from_eapol = bytes.fromhex(eapol_frame2.eapol.load)[-16:]  # Actual MIC extraction from EAPOL frame
+        # Ensure you are accessing the correct part of the frame's payload
+        try:
+            # This method directly reads the EAPOL load from the packet
+            eapol_load = bytes.fromhex(eapol_frame2.eapol.load)
+            mic_from_eapol = eapol_load[-16:]  # MIC is the last 16 bytes of the EAPOL load
 
-        # Compare the derived PSK with the extracted MIC from the second EAPOL frame
-        if hmac.new(derived_psk, mic_from_eapol, hashlib.sha1).digest() == mic_from_eapol:
-            print(f"KEY FOUND! [{hexlify(derived_psk).decode()}]")
+            # Compare the derived PSK with the extracted MIC from the second EAPOL frame
+            if hmac.new(derived_psk, mic_from_eapol, hashlib.sha1).digest() == mic_from_eapol:
+                print(f"KEY FOUND! [{hexlify(derived_psk).decode()}]")
 
-            # Derive PTK from the PSK
-            ptk = derive_ptk(derived_psk, eapol_frame1, eapol_frame2)
+                # Derive PTK from the PSK
+                ptk = derive_ptk(derived_psk, eapol_frame1, eapol_frame2)
 
-            # Extract Master Key, Transient Key, and EAPOL HMAC
-            master_key, transient_key, eapol_hmac = extract_keys_from_ptk(ptk)
+                # Extract Master Key, Transient Key, and EAPOL HMAC
+                master_key, transient_key, eapol_hmac = extract_keys_from_ptk(ptk)
 
-            # Print the keys
-            print(f"Master Key     : {hexlify(master_key).decode()}")
-            print(f"Transient Key  : {hexlify(transient_key).decode()}")
-            print(f"EAPOL HMAC     : {hexlify(eapol_hmac).decode()}")
-            break
+                # Print the keys
+                print(f"Master Key     : {hexlify(master_key).decode()}")
+                print(f"Transient Key  : {hexlify(transient_key).decode()}")
+                print(f"EAPOL HMAC     : {hexlify(eapol_hmac).decode()}")
+                break
+        except AttributeError as e:
+            print("Error: Failed to extract MIC or EAPOL data correctly.")
+            print(f"Exception: {e}")
+            continue
+        
     else:
         print("KEY NOT FOUND")
         # If no key found, derive and print keys based on the last attempted PSK
