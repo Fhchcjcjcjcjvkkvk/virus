@@ -21,8 +21,15 @@ eapol_frames = extract_eapol_from_pcap(pcap_file)
 for i, frame in enumerate(eapol_frames):
     print(f"Frame {i+1}:")
     print(f"  Time: {frame.sniff_time}")
-    print(f"  Source MAC: {frame.eth.src}")
-    print(f"  Destination MAC: {frame.eth.dst}")
-    print(f"  EAPOL Version: {frame.eapol.version}")
-    print(f"  EAPOL Type: {frame.eapol.type}")
+
+    # Check for Ethernet layer and handle cases where it's not available
+    if 'eth' in frame:
+        print(f"  Source MAC: {frame.eth.src}")
+        print(f"  Destination MAC: {frame.eth.dst}")
+    
+    # Access EAPOL specific attributes
+    if 'eapol' in frame:
+        print(f"  EAPOL Version: {frame.eapol.version}")
+        print(f"  EAPOL Type: {frame.eapol.type}")
+
     print("-" * 40)
