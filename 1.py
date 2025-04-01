@@ -65,7 +65,7 @@ def main():
     print(f"Reading handshake from {args.file}...")
     handshake = extract_handshake(args.file)
     
-    if len(handshake) < 4:
+    if len(handshake) < 2
         print("Error: Less than 4 EAPOL frames found. A full handshake is required.")
         return
     
