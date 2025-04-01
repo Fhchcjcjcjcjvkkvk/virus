@@ -20,7 +20,7 @@ def extract_handshake(pcap_file):
 def print_packet_structure(packet):
     print("Raw Packet Structure:")
     for layer in packet:
-        print(f"{layer.layer_name}: {layer.field_names}")
+        print(f"Layer: {layer.layer_name}")
         for field in layer._all_fields:
             print(f"{field.showname}: {field.showvalue}")
 
@@ -104,7 +104,7 @@ def crack_wpa(pcap_file, ssid, wordlist_file):
 if __name__ == "__main__":
     pcap_file = "shak.cap"  # Path to your .cap file
     ssid = "PEKLO"  # Replace with the SSID of your network
-    wordlist = "pwd.txt"  # Path to your wordlist file
+    wordlist = "pwd.pwds"  # Path to your wordlist file
 
     # Start cracking
     crack_wpa(pcap_file, ssid, wordlist)
