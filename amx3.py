@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import binascii
 from scapy.all import rdpcap
+import hmac  # Přidat na začátek kódu
 
 # Konstanta pro výpočet PMKID
 PMKID_NAME = b"PMK Name"
@@ -28,7 +29,7 @@ def derive_pmk(psk, ssid):
 def verify_pmkid(pmk, ap_mac, client_mac):
     """ Vypočítá PMKID a porovná s extrahovaným PMKID """
     data = PMKID_NAME + binascii.unhexlify(ap_mac) + binascii.unhexlify(client_mac)
-    return binascii.hexlify(hashlib.hmac.new(pmk, data, hashlib.sha1).digest()[:16]).decode()
+    return binascii.hexlify(hmac.new(pmk, data, hashlib.sha1).digest()[:16]).decode()
 
 def crack_pmkid(wordlist, ssid, ap_mac, client_mac, target_pmkid):
     """ Prochází slovník a hledá odpovídající heslo """
