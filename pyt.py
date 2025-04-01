@@ -10,7 +10,7 @@ def extract_handshake(pcap_file):
     Extracts SSID, ANonce, SNonce, MIC, AP MAC, and Client MAC from a .cap file.
     """
     cap = pyshark.FileCapture(pcap_file)
-    
+
     ssid = None
     ap_mac, client_mac = None, None
     anonce, snonce, mic = None, None, None
@@ -23,13 +23,17 @@ def extract_handshake(pcap_file):
         if hasattr(pkt, "eapol"):
             eapol_layer = pkt.eapol
 
-            if int(eapol_layer.key_info, 16) & 0x0080:  # Check if message contains MIC
-                ap_mac = pkt.wlan.bssid
-                client_mac = pkt.wlan.sa
-                anonce = eapol_layer.key_nonce
+            key_info = getattr(eapol_layer, "key_info", None)
+            if key_info is None:
+                continue  # Skip if key_info is missing
+            
+            if int(key_info, 16) & 0x0080:  # Check if message contains MIC
+                ap_mac = getattr(pkt.wlan, "bssid", None)
+                client_mac = getattr(pkt.wlan, "sa", None)
+                anonce = getattr(eapol_layer, "key_nonce", None)
                 snonce = getattr(eapol_layer, "wlan_mgt.wpa_key_nonce", None)
-                mic = eapol_layer.key_mic
-                key_replay_counter = eapol_layer.key_replay_counter
+                mic = getattr(eapol_layer, "key_mic", None)
+                key_replay_counter = getattr(eapol_layer, "key_replay_counter", None)
                 break
 
     cap.close()
