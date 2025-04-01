@@ -1,8 +1,8 @@
 import argparse
 import hashlib
 import scapy.all as scapy
-from scapy.layers.dot11 import Dot11, Dot11Auth, Dot11Deauth, EAPOL
 import binascii
+from scapy.layers.dot11 import Dot11, EAPOL
 
 def extract_handshake(cap_file):
     """Extrahuje WPA handshake ze souboru .cap"""
