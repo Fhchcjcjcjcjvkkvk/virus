@@ -8,5 +8,3 @@ for packet in cap:
             anonce = packet.eapol.key.anonce
             snonce = packet.eapol.key.snonce
             print(f"ANonce: {anonce}, SNonce: {snonce}")
-        except AttributeError:
-            pass
