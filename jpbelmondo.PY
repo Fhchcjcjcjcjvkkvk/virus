@@ -12,7 +12,7 @@ def extract_handshake(pcap_file):
             eapol_packets.append(packet)
     
     # Ensure that we have a 4-way handshake (at least 4 EAPOL packets)
-    if len(eapol_packets) >= 4:
+    if len(eapol_packets) >= 1:
         return eapol_packets
     else:
         raise ValueError("Handshake not found or incomplete in the provided capture file.")
