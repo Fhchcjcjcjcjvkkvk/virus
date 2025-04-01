@@ -15,7 +15,7 @@ def parse_handshake(capture_file):
     for packet in cap:
         if hasattr(packet, 'eapol'):
             eapol_frames.append(packet)
-        if len(eapol_frames) >= 4:  # We need 4 frames for a full 4-way handshake
+        if len(eapol_frames) >= 2:  # We need 4 frames for a full 4-way handshake
             break
     return eapol_frames
 
@@ -30,7 +30,7 @@ def crack_psk_from_capture(capture_file, dictionary):
     # Parse the EAPOL frames from the capture
     eapol_frames = parse_handshake(capture_file)
 
-    if len(eapol_frames) < 4:
+    if len(eapol_frames) < 2:
         print("Insufficient EAPOL frames in capture.")
         return None
     
