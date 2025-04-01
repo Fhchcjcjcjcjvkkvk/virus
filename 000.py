@@ -2,7 +2,6 @@ import argparse
 import hashlib
 import scapy.all as scapy
 import binascii
-from scapy.layers.dot11 import Dot11, EAPOL
 
 def extract_handshake(cap_file):
     """Extrahuje WPA handshake ze souboru .cap"""
@@ -11,7 +10,7 @@ def extract_handshake(cap_file):
     
     # Hledání EAPOL paketů, které obsahují WPA handshake
     for pkt in packets:
-        if pkt.haslayer(EAPOL):
+        if pkt.haslayer(scapy.EAPOL):
             handshake.append(pkt)
     
     if len(handshake) < 2:
@@ -32,12 +31,12 @@ def extract_eapol_data(handshake):
     client_mac = None
     eapol_data = []
     for pkt in handshake:
-        if pkt.haslayer(EAPOL):
-            eapol_data.append(pkt[EAPOL].load)
-            if pkt.haslayer(Dot11):
+        if pkt.haslayer(scapy.EAPOL):
+            eapol_data.append(pkt[scapy.EAPOL].load)
+            if pkt.haslayer(scapy.Dot11):
                 if not ap_mac:
-                    ap_mac = pkt[Dot11].addr2
-                client_mac = pkt[Dot11].addr1
+                    ap_mac = pkt[scapy.Dot11].addr2
+                client_mac = pkt[scapy.Dot11].addr1
     return ap_mac, client_mac, eapol_data
 
 def check_psk(handshake, wordlist, ssid):
