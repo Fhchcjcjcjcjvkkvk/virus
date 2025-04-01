@@ -11,13 +11,14 @@ def extract_pmkid(pcap_file):
     packets = rdpcap(pcap_file)
     
     for packet in packets:
-        if packet.haslayer("EAPOL") and len(packet) >= 86:
-            # Extrakce dat
-            ap_mac = packet.addr2.replace(":", "").lower()
-            client_mac = packet.addr1.replace(":", "").lower()
-            pmkid = binascii.hexlify(packet[86:102]).decode()
-
-            return ap_mac, client_mac, pmkid
+        if packet.haslayer("EAPOL"):
+            raw_bytes = bytes(packet)
+            if len(raw_bytes) >= 86:
+                ap_mac = packet.addr2.replace(":", "").lower()
+                client_mac = packet.addr1.replace(":", "").lower()
+                pmkid = binascii.hexlify(raw_bytes[-16:]).decode()
+                return ap_mac, client_mac, pmkid
+    
     return None, None, None
 
 def derive_pmk(psk, ssid):
