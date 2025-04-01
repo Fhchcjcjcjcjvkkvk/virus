@@ -22,7 +22,11 @@ def print_packet_structure(packet):
     for layer in packet:
         print(f"Layer: {layer.layer_name}")
         for field in layer._all_fields:
-            print(f"{field.showname}: {field.showvalue}")
+            # Check if the field is a string or a field object
+            if isinstance(field, str):
+                print(f"Field Name: {field} (string)")
+            else:
+                print(f"{field.showname}: {field.showvalue}")
 
 # Function to derive PSK from password and SSID using PBKDF2-HMAC-SHA1
 def derive_psk(password, ssid):
