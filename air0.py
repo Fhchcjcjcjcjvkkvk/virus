@@ -85,7 +85,7 @@ def crack_wpa(pcap_file, ssid, wordlist):
 # Example usage:
 pcap_file = "shak.cap"  # Path to the .cap file containing the WPA handshake
 ssid = "PEKLO"          # SSID of the target network
-wordlist = "pwd.txt"    # Path to the wordlist file containing potential passwords
+wordlist = "pwd.pwds"    # Path to the wordlist file containing potential passwords
 
 # Start the cracking process
 crack_wpa(pcap_file, ssid, wordlist)
