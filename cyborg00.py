@@ -51,7 +51,7 @@ def crack_wpa_handshake(cap_file, wordlist, ssid):
 
 # Example Usage
 cap_file = "wpa.cap"
-wordlist = "PWD.txt"
+wordlist = "pwd.txt"
 ssid = "test"
 
 crack_wpa_handshake(cap_file, wordlist, ssid)
