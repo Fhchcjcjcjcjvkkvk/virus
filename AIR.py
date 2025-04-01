@@ -70,7 +70,7 @@ def main():
         return
     
     # Display available networks if more than one
-    if len(handshake) > 1:
+    if len(handshake) > 1
         print("Multiple networks found:")
         for i, packet in enumerate(handshake):
             print(f"{i+1}. {packet.addr2} - {packet.info.decode()}")
