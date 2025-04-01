@@ -16,15 +16,15 @@ EAPOL_FRAME = None
 
 def extract_handshake(pcap_file):
     global SSID, ANONCE, SNONCE, MIC, AP_MAC, STA_MAC, EAPOL_FRAME
-    
+
     cap = pyshark.FileCapture(pcap_file, display_filter="eapol")
 
     handshake_packets = []
-    
+
     for packet in cap:
         if 'EAPOL' in packet:
             handshake_packets.append(packet)
-    
+
     cap.close()
 
     if len(handshake_packets) < 2:
@@ -33,22 +33,42 @@ def extract_handshake(pcap_file):
 
     print(f"[+] Found {len(handshake_packets)} EAPOL packets. Extracting data...")
 
-    # Extract essential fields
     for packet in handshake_packets:
-        if hasattr(packet, 'wlan'):
-            AP_MAC = packet.wlan.bssid
-            STA_MAC = packet.wlan.ta
-        if hasattr(packet, 'eapol'):
-            key_info = int(packet.eapol.key_info, 16)
-            nonce = binascii.unhexlify(packet.eapol.key_nonce.replace(':', ''))
-            mic = binascii.unhexlify(packet.eapol.key_mic.replace(':', ''))
-            
+        try:
+            if not hasattr(packet, 'eapol'):
+                print("[!] Skipping packet: No EAPOL layer found.")
+                continue
+
+            if hasattr(packet, 'wlan'):
+                AP_MAC = getattr(packet.wlan, 'bssid', None)
+                STA_MAC = getattr(packet.wlan, 'ta', None)
+
+            key_info = getattr(packet.eapol, 'key_info', None)
+            nonce = getattr(packet.eapol, 'key_nonce', None)
+            mic = getattr(packet.eapol, 'key_mic', None)
+
+            if key_info is None:
+                print("[!] Skipping packet: Missing key_info field.")
+                continue
+
+            key_info = int(key_info, 16)  # Convert hex string to integer
+
+            if nonce:
+                nonce = binascii.unhexlify(nonce.replace(':', ''))
+            if mic:
+                mic = binascii.unhexlify(mic.replace(':', ''))
+
             if key_info & 0x008:  # Message 2 or 3
                 SNONCE = nonce
             elif key_info & 0x010:  # Message 3 or 4
                 ANONCE = nonce
                 MIC = mic
                 EAPOL_FRAME = binascii.unhexlify(packet.eapol.get_raw_packet())
+
+        except AttributeError as e:
+            print(f"[!] AttributeError: {e}")
+            print(f"[!] Skipping packet due to missing fields: {packet}")
+            continue
 
     if not (ANONCE and SNONCE and MIC and EAPOL_FRAME):
         print("[!] Failed to extract all required handshake components.")
