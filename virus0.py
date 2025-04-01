@@ -13,10 +13,19 @@ def extract_handshake(file):
     for packet in capture:
         if 'eapol' in packet:
             eapol_frames.append(packet)
-            # Assuming SSID is in the 802.11 layer (you may need to adjust this depending on your capture)
+            
+            # Safely check for the wlan layer and extract the SSID
             if 'wlan' in packet:
-                ssid = packet.wlan.ssid
-                ssids.add(ssid)
+                try:
+                    ssid = packet.wlan.ssid
+                    ssids.add(ssid)
+                except AttributeError:
+                    # If ssid is not available, fall back to bssid or other info
+                    if 'wlan_bssid' in packet:
+                        ssid = packet.wlan_bssid
+                        ssids.add(ssid)
+                    else:
+                        print("No SSID or BSSID available in the packet.")
     
     capture.close()
     
@@ -28,10 +37,9 @@ def extract_handshake(file):
 
 # Function to parse the selected SSID from the capture file
 def parse_handshake(eapol_frames, selected_ssid):
-    # Let's find the first EAPOL frame that matches the selected SSID
     for packet in eapol_frames:
-        if 'wlan' in packet and packet.wlan.ssid == selected_ssid:
-            ssid = packet.wlan.ssid
+        if 'wlan' in packet and (getattr(packet.wlan, 'ssid', None) == selected_ssid or getattr(packet.wlan, 'bssid', None) == selected_ssid):
+            ssid = packet.wlan.ssid if 'ssid' in packet.wlan else packet.wlan_bssid
             eapol_data = binascii.unhexlify(packet.eapol.key.iv)  # Example of extracting data
             return ssid, eapol_data
     print("Selected SSID not found in the capture.")
