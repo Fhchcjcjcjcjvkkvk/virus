@@ -27,7 +27,7 @@ def extract_handshake(pcap_file):
     for packet in packets:
         if packet.haslayer(EAPOL):
             handshake.append(packet)
-        if len(handshake) == 4:  # We only need 4 EAPOL packets for the full handshake
+        if len(handshake) == 2:  # We only need 4 EAPOL packets for the full handshake
             break
     return handshake
 
