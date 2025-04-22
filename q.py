@@ -163,7 +163,8 @@ class Device:
         print(f'{Fore.GREEN}Listening for DNS packets in NFQUEUE...{Style.RESET_ALL}')
         nfqueue.run()
 
-      def injector(self):
+      
+    def injector(self):
         import http.server
         import socketserver
         import threading
@@ -199,7 +200,6 @@ class Device:
         proxy_thread.start()
 
         print(f"{Fore.GREEN}Injector ready. Proxy server running. JavaScript will be injected into ARP spoofed targets.{Style.RESET_ALL}")
-        
 
     def sniff(self):
         while True:
