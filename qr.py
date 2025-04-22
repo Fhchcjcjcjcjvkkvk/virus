@@ -17,6 +17,9 @@ from prettytable import PrettyTable
 from bleak import BleakScanner, BleakClient
 import asyncio
 import random
+import argparse
+import sys
+
 
 # Check platform and privileges
 if platform.system() == "Windows":
@@ -30,18 +33,50 @@ elif platform.system() == "Linux":
 else:
     print(f"{Fore.RED}Unsupported OS: {platform.system()}{Style.RESET_ALL}")
     exit(1)
+    
+def parse_args():
+    parser = argparse.ArgumentParser(description="Network and BLE Sniffer/Attacker Tool")
 
-# Adjust argument parsing for BLE mode
-parser = argparse.ArgumentParser(description='Device network sniffer')
-parser.add_argument('-m', help='Mode: wifi or ble', required=True)
+    # Main mode argument: Wi-Fi or BLE
+    parser.add_argument(
+        '-m', '--mode',
+        choices=['wifi', 'ble'],
+        required=True,
+        help="Select the mode of operation: 'wifi' or 'ble'"
+    )
 
-# Only require network and interface arguments if wifi mode is specified
-if parser.parse_args().m == 'wifi':
-    parser.add_argument('-n', help='Network to scan (e.g., "192.168.0.0/24")', required=True)
-    parser.add_argument('-i', help='Network interface to use', required=True)
-    parser.add_argument('-r', help='IP of your home router', required=True)
+    # Common arguments for both modes
+    parser.add_argument(
+        '-i', '--interface',
+        required=True,
+        help="Specify the network interface to use (e.g., wlan0 for Wi-Fi or hci0 for BLE)"
+    )
 
-opts = parser.parse_args()
+    # Specific arguments for Wi-Fi mode
+    parser.add_argument(
+        '-n', '--network',
+        required=False,
+        help="Specify the network (e.g., 192.168.0.0/24). Required for Wi-Fi mode."
+    )
+    parser.add_argument(
+        '-r', '--router_ip',
+        required=False,
+        help="Specify the router IP address. Required for Wi-Fi mode."
+    )
+
+    # For BLE mode, you can add specific options for scanning and interacting with BLE devices
+    parser.add_argument(
+        '--ble_scan',
+        action='store_true',
+        help="Scan for nearby BLE devices. Available in BLE mode."
+    )
+    parser.add_argument(
+        '--ble_device',
+        type=str,
+        help="Specify a BLE device address to interact with. Available in BLE mode."
+    )
+
+    return parser.parse_args()
 
 
 # DNS Spoofing for Multiple Targets
