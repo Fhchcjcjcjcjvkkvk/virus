@@ -363,6 +363,7 @@ class BLEHandler:
         # Bleak automatically disconnects when the client context ends.
 
 def main():
+    opts = parse_args()  # Add this line to parse the arguments
     if opts.m == "wifi":
         while True:
             targetip = arp_scan(opts.network, opts.iface)
