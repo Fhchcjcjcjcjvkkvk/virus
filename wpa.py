@@ -5,6 +5,7 @@ import base64
 
 
 class Listener:
+
     def __init__(self, ip, port):
         l = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # CREATES A SOCKET OBJECT.AF_INET STANDS FOR IPV4 AND SOCK_STREAM FOR TCP PACKET
         l.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # CHANGE OPTIONS OF SOCKET.HERE THE SOCKET IS MADE REUSABLE
@@ -45,11 +46,11 @@ class Listener:
 
     def run(self):
         while True:
-            command = input(">")  # Use input for Python 3
+            command = input(">")  # Use input for Python 3 instead of raw_input
             command = command.split(" ")
             try:
                 if command[0] == "upload":
-                    # HERE WE ARE SENDING A LIST OF ["UPLOAD","SAMPLE.TXT",THE CONTENT INSIDE SAMPLE.TX]
+                    # HERE WE ARE SENDING A LIST OF ["UPLOAD", "SAMPLE.TXT", THE CONTENT INSIDE SAMPLE.TX]
                     file_content = self.read_file(command[1])
                     command.append(file_content)
                 response = self.execute(command)
