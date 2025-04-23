@@ -23,7 +23,7 @@ def send_file(client_socket, filename):
     client_socket.sendall(b"<<EOF>>")
 
 def main():
-    HOST = '0.0.0.0'
+    HOST = '10.0.1.37'
     PORT = 5555
     s = socket.socket()
     s.connect((HOST, PORT))
