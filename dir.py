@@ -35,7 +35,7 @@ def handle_download(connection, server_destination):
     print(f"File {file_name} sent to client.")
 
 def main():
-    server_destination = 'server_files'
+    server_destination = 'downloads'
     os.makedirs(server_destination, exist_ok=True)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
