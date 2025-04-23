@@ -2,7 +2,7 @@ import zlib
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 
-KEY = b'your_32_byte_super_secret_key_here!!'  # 32 bytes
+KEY = b'54fdd053beb8dfd181d89f7f0d2dc09118f02892d559f438bc672a569fba7c24'  # 32 bytes
 IV = b'initialvector123'  # 16 bytes
 
 def encrypt_and_compress(data: bytes) -> bytes:
